@@ -50,12 +50,12 @@ region_list_init(struct region_list *list)
 }
 
 #define region_list_is_empty(region_list) \
-	list_is_empty(&((regions_list)->head))
+	list_is_empty(&((region_list)->head))
 
 static inline void
 __region_list_add(struct region_list *list, struct region *entry)
 {
-	list_add_tail(&(list->head), &(entry->node));
+	list_add_tail(&(entry->node), &(list->head));
 	list->size++;
 }
 

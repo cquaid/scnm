@@ -2,6 +2,7 @@
 
 #include <libgen.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <regex.h>
 
@@ -52,7 +53,7 @@ region_list_find_address(struct region_list *list, unsigned long address)
 	if (region_list_is_empty(list))
 		return NULL;
 
-	list_for_each_safe(entry, &(list->head)) {
+	list_for_each(entry, &(list->head)) {
 		struct region *region = region_entry(entry);
 
 		if ((address >= region->start) && (address <= region->end))
@@ -74,7 +75,7 @@ static inline void
 region_filter_list_add(struct region_filter_list *list,
 	struct region_filter *entry)
 {
-	list_add_tail(&(list->head), &(entry->node));
+	list_add_tail(&(entry->node), &(list->head));
 	list->size++;
 }
 
@@ -199,6 +200,7 @@ region_list_filter_out(struct region_list *list,
 static int
 regex_match(struct region *region, void *data)
 {
+	regmatch_t match;
 	const regex_t *regex = (const regex_t *)data;
 	return regexec(regex, region->pathname, 1, &match, 0);
 }
@@ -238,7 +240,7 @@ region_list_filter_out_pathname(struct region_list *list, const char *name)
 
 struct basename_match_data {
 	const char *find;
-	const char *path;
+	char *path;
 	size_t path_len;
 };
 
@@ -266,7 +268,7 @@ basename_match(struct region *region, void *data)
 
 	base = basename(bmd->path);
 
-	return (strcmp(base, name) != 0);
+	return (strcmp(base, bmd->find) != 0);
 }
 
 struct region_filter_list *
@@ -280,7 +282,7 @@ region_list_filter_basename(struct region_list *list, const char *name)
 		.path_len = 0
 	};
 
-	ret = region_list_filter(list, basename_match, (void *)data);
+	ret = region_list_filter(list, basename_match, (void *)&data);
 
 	if (data.path != NULL)
 		free(data.path);
@@ -299,7 +301,7 @@ region_list_filter_out_basename(struct region_list *list, const char *name)
 		.path_len = 0
 	};
 
-	ret = region_list_filter_out(list, basename_match, (void *)data);
+	ret = region_list_filter_out(list, basename_match, (void *)&data);
 
 	if (data.path != NULL)
 		free(data.path);

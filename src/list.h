@@ -3,8 +3,10 @@
 
 /* Similar to lists in the linux kernel. */
 
+#ifndef offsetof
 #define offsetof(type, member) \
-	((size_t) & ( (type *)0->member ))
+	((size_t) & ( ((type *)0)->member ))
+#endif
 
 #define container_of(ptr, type, member) \
 	({ \

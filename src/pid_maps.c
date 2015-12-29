@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "list.h"
 #include "pid_maps.h"
 #include "region.h"
 
@@ -108,6 +109,8 @@ new_region_from_mapping(const struct mapping *mapping)
 
 	memcpy(ret->pathname, mapping->pathname, slen + 1);
 
+	list_head_init(&(ret->node));
+
 	return ret;
 }
 
@@ -189,7 +192,7 @@ process_pid_maps(pid_t pid, struct region_list *list)
 			/* Not using realloc() to avoid additional data move. */
 			free(mapping);
 
-			mapping = malloc(mapping, new_size);
+			mapping = malloc(new_size);
 
 			if (mapping == NULL) {
 				fprintf(stderr, "realloc(%zd): (%d) %s\n",
@@ -213,9 +216,9 @@ process_pid_maps(pid_t pid, struct region_list *list)
 		}
 
 		/* Skip if not read and write. */
-		if ((mapping->perms.w != 'w') || (mapping->perms.r != 'r'))
+		if ((mapping->perms.write != 'w') || (mapping->perms.read != 'r'))
 			continue;
-
+#if 0
 		fprintf(stderr,
 			"%lx-%lx %c%c%c%c %lx %02x:%02x %lu    %s\n",
 			mapping->address.start, mapping->address.end,
@@ -225,6 +228,7 @@ process_pid_maps(pid_t pid, struct region_list *list)
 			mapping->dev.major, mapping->dev.minor,
 			mapping->inode,
 			mapping->pathname);
+#endif
 
 		/* Allocate a new region. */
 		region = new_region_from_mapping(mapping);
