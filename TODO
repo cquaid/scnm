@@ -14,3 +14,26 @@ Add filtering for the regions list.
 
 Need commands to stop game and to continue game so shell scripts can:
 stop. get address value. process. set. continue. without underlying data changing.
+
+
+number ops:
+= <arg,...>
+== <arg,...>
+! <arg,...>
+! <op> <op_args>
+!= <arg,...>
+< <arg>
+<= <arg>
+> <arg>
+>= <arg>
+>< <arg_gt> <arg_lt>
+>=< <arg_ge> <arg_lt>
+><= <arg_gt> <arg_le>
+>=<= <arg_ge> <arg_le>
+
+arg : single number
+arg,... : comma seperated list of numbers (num[,num])
+
+byte array ops:
+aob <byte_couples>
+string <ascii_string>
