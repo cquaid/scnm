@@ -79,12 +79,6 @@ region_filter_list_add(struct region_filter_list *list,
 	list->size++;
 }
 
-#define region_filter_list_is_empty(filter_list) \
-	list_is_empty(&((filter_list)->head))
-
-#define region_filter_entry(list_node) \
-	list_entry(list_node, struct region_filter, node)
-
 static inline void
 region_filter_list_clear(struct region_filter_list *list)
 {
@@ -100,6 +94,13 @@ region_filter_list_clear(struct region_filter_list *list)
 	}
 
 	region_filter_list_init(list);
+}
+
+void
+region_filter_list_destroy(struct region_filter_list *list)
+{
+	region_filter_list_clear(list);
+	free(list);
 }
 
 static inline struct region_filter *
@@ -200,21 +201,43 @@ region_list_filter_out(struct region_list *list,
 static int
 regex_match(struct region *region, void *data)
 {
-	regmatch_t match;
 	const regex_t *regex = (const regex_t *)data;
-	return regexec(regex, region->pathname, 1, &match, 0);
+	return regexec(regex, region->pathname, 1, NULL, 0);
+}
+
+static inline struct region_filter_list *
+__region_list_filter_regex(struct region_list *list,
+	const char *regex, int invert)
+{
+	int err;
+	regex_t reg;
+	struct region_filter_list *ret;
+
+	err = regcomp(&reg, regex, REG_NOSUB | REG_EXTENDED);
+
+	if (err != 0)
+		return NULL;
+
+	if (invert)
+		ret = region_list_filter_out(list, regex_match, (void *)&reg);
+	else
+		ret = region_list_filter(list, regex_match, (void *)&reg);
+
+	regfree(&reg);
+
+	return ret;
 }
 
 struct region_filter_list *
-region_list_filter_regex(struct region_list *list, const regex_t *regex)
+region_list_filter_regex(struct region_list *list, const char *regex)
 {
-	return region_list_filter(list, regex_match, (void *)regex);
+	return __region_list_filter_regex(list, regex, 0);
 }
 
 struct region_filter_list *
-region_list_filter_out_regex(struct region_list *list, const regex_t *regex)
+region_list_filter_out_regex(struct region_list *list, const char *regex)
 {
-	return region_list_filter_out(list, regex_match, (void *)regex);
+	return __region_list_filter_regex(list, regex, 1);
 }
 
 

@@ -1,6 +1,8 @@
 .SECONDEXPANSION:
 
-apps := test_pid_maps
+apps := \
+	test_pid_maps \
+	test_filter
 
 SRC_DIR := $(CURDIR)/../src
 
@@ -13,6 +15,15 @@ test_pid_maps_SRC := \
 	$(SRC_DIR)/pid_maps.c
 test_pid_maps_CFLAGS :=
 test_pid_maps_LDFLAGS :=
+
+test_filter_SRC := \
+	$(CURDIR)/test_filter.c \
+	$(SRC_DIR)/region.c \
+	$(SRC_DIR)/pid_maps.c
+test_filter_CFLAGS :=
+test_filter_LDFLAGS :=
+
+
 
 all: $(apps)
 

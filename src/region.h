@@ -1,8 +1,6 @@
 #ifndef H_REGION
 #define H_REGION
 
-#include <regex.h>
-
 #include "list.h"
 
 struct region {
@@ -98,9 +96,18 @@ extern struct region_filter_list *
 region_list_filter_out_basename(struct region_list *list, const char *name);
 
 extern struct region_filter_list *
-region_list_filter_regex(struct region_list *list, const regex_t *regex);
+region_list_filter_regex(struct region_list *list, const char *regex);
 
 extern struct region_filter_list *
-region_list_filter_out_regex(struct region_list *list, const regex_t *regex);
+region_list_filter_out_regex(struct region_list *list, const char *regex);
+
+
+#define region_filter_list_is_empty(region_list) \
+	region_list_is_empty(region_list)
+
+#define region_filter_entry(list_node) \
+	list_entry(list_node, struct region_filter, node)
+
+extern void region_filter_list_destroy(struct region_filter_list *list);
 
 #endif /* H_REGION */

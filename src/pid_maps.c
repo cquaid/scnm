@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "list.h"
 #include "pid_maps.h"
 #include "region.h"
 
@@ -108,8 +107,6 @@ new_region_from_mapping(const struct mapping *mapping)
 	ret->perms.shared  = (mapping->perms.cow == 's');
 
 	memcpy(ret->pathname, mapping->pathname, slen + 1);
-
-	list_head_init(&(ret->node));
 
 	return ret;
 }
