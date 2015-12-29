@@ -1,0 +1,16 @@
+Daemonize.  Spawn new thread when new attach is requested.
+Main thread contains list of message queue ids for each process.
+frontend sends commands to the message queue for the requested pid.
+
+
+Command line accessable (for scripting).
+Still needs a shell frontend for searching.
+
+
+Multithread the frontend so set loops can be implemented properly.
+
+
+Add filtering for the regions list.
+
+Need commands to stop game and to continue game so shell scripts can:
+stop. get address value. process. set. continue. without underlying data changing.
