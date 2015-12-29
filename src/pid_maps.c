@@ -1,3 +1,11 @@
+#include <sys/types.h>
+
+#include <errno.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 
 /* Format:
  *
@@ -15,7 +23,7 @@
  *    r        byte, read permission or '-' for no read
  *    w        byte, write permissions or '-' for no write
  *    x        byte, exec permissions or '-' for no exec
- *    p        byte, private mapping or '-' for non-copy-on-write (shared)
+ *    p        byte, private mapping or 's' for non-copy-on-write (shared)
  *
  *  offset:
  *
@@ -36,23 +44,26 @@
  *
  * Possible pseudo-paths:
  *
+ *   [heap]          process heap
  *   [stack]         main thread stack
  *   [stack:<tid>]   thread stack
- *   [vdso]          virtual dynamic shared object (for the link editor)
- *   [heap]          process heap
+ *   [vdso]          virtual dynamic linked shared object
+ *   [vsyscall]      virtual system call mapping
+ *   [vvar]          vDSO variables
  */
 
-#define P_READ  0x1
-#define P_WRITE 0x2
-#define P_EXEC  0x4
-#define P_PRIV  0x8
 struct mapping {
 	struct {
 		unsigned long start;
 		unsigned long end;
 	} address;
 
-	unsigned int perms;
+	struct {
+		unsigned char r;
+		unsigned char w;
+		unsigned char x;
+		unsigned char p;
+	} perms;
 
 	unsigned long offset;
 
@@ -64,27 +75,131 @@ struct mapping {
 	unsigned long inode;
 
 	char pathname[1];
-}
+};
 
 static inline int
 parse_line(const char *line, struct mapping *mapping)
 {
 	int ret;
-	unsigned char r, w, x, p;
 
 	ret = sscanf(line,
-			"%lu-%lu %c%c%c%c %lu %u:%u %lu %s",
+			"%lx-%lx %c%c%c%c %lx %x:%x %lu %s",
 			&(mapping->address.start), &(mapping->address.end),
-			&r, &w, &x, &p,
+			&(mapping->perms.r), &(mapping->perms.w),
+			&(mapping->perms.x), &(mapping->perms.p),
 			&(mapping->offset),
 			&(mapping->dev.major), &(mapping->dev.minor),
 			&(mapping->inode),
-			&(mapping->pathname));
+			mapping->pathname);
 
-	mapping->perms = ((r == 'r') * P_READ)
-				   | ((w == 'w') * P_WRITE)
-				   | ((x == 'x') * P_EXEC)
-				   | ((p == 'p') * P_PRIV);
+	if (ret >= 10)
+		return 0;
+
+	if (ret == 0)
+		return EOF;
+
+	return ret;
+}
+
+
+int
+process_pid_maps(pid_t pid)
+{
+	int err;
+	int ret = -1;
+
+	char maps_path[64];
+	FILE *maps_file = NULL;
+
+	char *line = NULL;
+	size_t line_len = 0;
+
+	struct mapping *mapping = NULL;
+	size_t mapping_len = 0;
+
+	/* Create path name. */
+	err = snprintf(maps_path, sizeof(maps_path),
+				"/proc/%u/maps", (unsigned int)pid);
+
+	if (err >= (int)sizeof(maps_path)) {
+		errno = E2BIG;
+		err = -1;
+	}
+
+	if (err < 0) {
+		fprintf(stderr, "snprintf(): (%d) %s\n",
+			errno, strerror(errno));
+		return ret;
+	}
+
+	/* Open maps file. */
+	maps_file = fopen(maps_path, "r");
+
+	if (maps_file == NULL) {
+		fprintf(stderr, "fopen(%s): (%d) %s\n",
+			maps_path, errno, strerror(errno));
+		return ret;
+	}
+
+	while (getline(&line, &line_len, maps_file) != -1) {
+		size_t new_size;
+
+		/* Resize if necessary. */
+		new_size = sizeof(*mapping) + line_len;
+
+		if (new_size > mapping_len) {
+			void *new_mapping;
+
+			new_mapping = realloc(mapping, new_size);
+
+			if (new_mapping == NULL) {
+				fprintf(stderr, "realloc(%zd): (%d) %s\n",
+					new_size, errno, strerror(errno));
+				goto out;
+			}
+
+			mapping = new_mapping;
+			mapping_len = new_size;
+		}
+
+		/* Clear the file name. */
+		memset(mapping->pathname, 0, mapping_len - sizeof(*mapping) + 1);
+
+		/* Parse a line from the maps file. */
+		err = parse_line(line, mapping);
+
+		if (err < 0) {
+			fprintf(stderr, "snprintf(): (%d) %s\n",
+				errno, strerror(errno));
+			goto out;
+		}
+
+		/* Skip if not read and write. */
+		if ((mapping->perms.w != 'w') || (mapping->perms.r != 'r'))
+			continue;
+
+		fprintf(stderr,
+			"%lx-%lx %c%c%c%c %lx %02x:%02x %lu    %s\n",
+			mapping->address.start, mapping->address.end,
+			mapping->perms.r, mapping->perms.w,
+			mapping->perms.x, mapping->perms.p,
+			mapping->offset,
+			mapping->dev.major, mapping->dev.minor,
+			mapping->inode,
+			mapping->pathname);
+	}
+
+	ret = 0;
+
+out:
+
+	if (mapping != NULL)
+		free(mapping);
+
+	if (line != NULL)
+		free(line);
+
+	fclose(maps_file);
 
 	return ret;
 }
