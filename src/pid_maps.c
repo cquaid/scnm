@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pid_maps.h"
+#include "region.h"
 
 /* Format:
  *
@@ -59,10 +61,10 @@ struct mapping {
 	} address;
 
 	struct {
-		unsigned char r;
-		unsigned char w;
-		unsigned char x;
-		unsigned char p;
+		unsigned char read;
+		unsigned char write;
+		unsigned char exec;
+		unsigned char cow;
 	} perms;
 
 	unsigned long offset;
@@ -77,6 +79,39 @@ struct mapping {
 	char pathname[1];
 };
 
+static inline struct region *
+new_region_from_mapping(const struct mapping *mapping)
+{
+	size_t len;
+	size_t slen;
+	struct region *ret;
+
+	slen = strlen(mapping->pathname);
+	len = sizeof(*ret) + slen;
+
+	ret = malloc(len);
+
+	if (ret == NULL)
+		return NULL;
+
+	ret->id = 0; /* Temporary */
+
+	ret->start = mapping->address.start;
+	ret->end = mapping->address.end;
+
+	ret->perms.read  = (mapping->perms.read == 'r');
+	ret->perms.write = (mapping->perms.write == 'w');
+	ret->perms.exec  = (mapping->perms.exec == 'x');
+
+	ret->perms.private = (mapping->perms.cow == 'p');
+	ret->perms.shared  = (mapping->perms.cow == 's');
+
+	memcpy(ret->pathname, mapping->pathname, slen + 1);
+
+	return ret;
+}
+
+
 static inline int
 parse_line(const char *line, struct mapping *mapping)
 {
@@ -85,8 +120,8 @@ parse_line(const char *line, struct mapping *mapping)
 	ret = sscanf(line,
 			"%lx-%lx %c%c%c%c %lx %x:%x %lu %s",
 			&(mapping->address.start), &(mapping->address.end),
-			&(mapping->perms.r), &(mapping->perms.w),
-			&(mapping->perms.x), &(mapping->perms.p),
+			&(mapping->perms.read), &(mapping->perms.write),
+			&(mapping->perms.exec), &(mapping->perms.cow),
 			&(mapping->offset),
 			&(mapping->dev.major), &(mapping->dev.minor),
 			&(mapping->inode),
@@ -103,7 +138,7 @@ parse_line(const char *line, struct mapping *mapping)
 
 
 int
-process_pid_maps(pid_t pid)
+process_pid_maps(pid_t pid, struct region_list *list)
 {
 	int err;
 	int ret = -1;
@@ -141,24 +176,27 @@ process_pid_maps(pid_t pid)
 		return ret;
 	}
 
+	region_list_init(list);
+
 	while (getline(&line, &line_len, maps_file) != -1) {
 		size_t new_size;
+		struct region *region;
 
 		/* Resize if necessary. */
 		new_size = sizeof(*mapping) + line_len;
 
 		if (new_size > mapping_len) {
-			void *new_mapping;
+			/* Not using realloc() to avoid additional data move. */
+			free(mapping);
 
-			new_mapping = realloc(mapping, new_size);
+			mapping = malloc(mapping, new_size);
 
-			if (new_mapping == NULL) {
+			if (mapping == NULL) {
 				fprintf(stderr, "realloc(%zd): (%d) %s\n",
 					new_size, errno, strerror(errno));
 				goto out;
 			}
 
-			mapping = new_mapping;
 			mapping_len = new_size;
 		}
 
@@ -181,17 +219,31 @@ process_pid_maps(pid_t pid)
 		fprintf(stderr,
 			"%lx-%lx %c%c%c%c %lx %02x:%02x %lu    %s\n",
 			mapping->address.start, mapping->address.end,
-			mapping->perms.r, mapping->perms.w,
-			mapping->perms.x, mapping->perms.p,
+			mapping->perms.read, mapping->perms.write,
+			mapping->perms.exec, mapping->perms.cow,
 			mapping->offset,
 			mapping->dev.major, mapping->dev.minor,
 			mapping->inode,
 			mapping->pathname);
+
+		/* Allocate a new region. */
+		region = new_region_from_mapping(mapping);
+
+		if (region == NULL) {
+			fprintf(stderr, "malloc(): (%d) %s\n",
+				errno, strerror(errno));
+			goto out;
+		}
+
+		region_list_add(list, region);
 	}
 
 	ret = 0;
 
 out:
+
+	if (ret != 0)
+		region_list_clear(list);
 
 	if (mapping != NULL)
 		free(mapping);
