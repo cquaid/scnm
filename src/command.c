@@ -5,8 +5,7 @@
 
 #include "command.h"
 #include "list.h"
-
-#define ARRAY_SIZ(x) (sizeof(x) / sizeof(*x))
+#include "util.h"
 
 void
 command_list_clear(struct command_list *list)
