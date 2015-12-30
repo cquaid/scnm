@@ -37,3 +37,40 @@ arg,... : comma seperated list of numbers (num[,num])
 byte array ops:
 aob <byte_couples>
 string <ascii_string>
+
+
+
+
+Graphical Overlay Hooking
+
+Unfortunately to make this easier for the end user there is a complicated process
+to perform:
+
+  PTRACE STOP
+
+  pull some block of data out of the code.
+  store current ip and register values.
+
+  write byte code for the following:
+    mmap(ANONYMOUS rw)
+	break point
+	mprotect(map_addr, rx)
+	break point
+
+  PTRACE CONTINUE
+
+  On first breakpoint:
+    copy the content of a swapBuffers hook function into the map.
+	copy the original swapBuffers function into the map and patch
+	  the hook function with the new address.
+
+  PTRACE CONTINUE
+
+  On second breakpoint:
+    unpatch / restore original code.
+	restore original register values.
+	restore original ip.
+	Add swapBuffers patch to point to the new swapBuffers hook that was
+	  with the first breakpoint.
+
+  PTRACE CONTINUE
