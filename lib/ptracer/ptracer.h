@@ -27,12 +27,22 @@ struct ptracer_breakpoint {
 	unsigned long orig_data;
 };
 
+enum ptracer_proc_state {
+	PTRACER_PROC_STATE_DEAD = 0,
+	PTRACER_PROC_STATE_RUNNING = 1,
+	PTRACER_PROC_STATE_STOPPED = 2,
+	PTRACER_PROC_STATE_PTRACE_STOPPED = 3
+};
+
 /* Ptracer context. */
 struct ptracer_ctx {
 	pid_t pid;
 
 	int started;
 	int process_status;
+
+	enum ptracer_proc_state current_state;
+	enum ptracer_proc_state expected_next_state;
 
 	struct list_head breakpoints;
 	struct ptracer_breakpoint *current_breakpoint;
