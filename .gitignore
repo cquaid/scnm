@@ -1,3 +1,6 @@
+# Build obj dir
+build
+
 # Object files
 *.o
 *.ko

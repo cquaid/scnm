@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "list.h"
+#include "shared/list.h"
 #include "pid_maps.h"
 #include "region.h"
 
@@ -41,12 +41,12 @@ main(int argc, char *argv[])
 			type |= T_REGEX;
 			arg = optarg;
 			break;
-	
+
 		case 'b':
 			type |= T_BASE;
 			arg = optarg;
 			break;
-	
+
 		case 'p':
 			type |= T_PATH;
 			arg = optarg;

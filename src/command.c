@@ -1,11 +1,12 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "command.h"
-#include "list.h"
-#include "util.h"
+#include "shared/list.h"
+#include "shared/util.h"
 
 void
 command_list_clear(struct command_list *list)
@@ -14,7 +15,7 @@ command_list_clear(struct command_list *list)
 	struct list_head *entry;
 
 	list_for_each_safe(entry, next, &(list->head)) {
-		struct commadn *command;
+		struct command *command;
 
 		list_del(entry);
 		command = command_entry(entry);
@@ -52,7 +53,7 @@ register_command(struct command_list *list,
 
 	command->handler  = handler;
 	command->shortdoc = shortdoc;
-	comamnd->longdoc  = longdoc;
+	command->longdoc  = longdoc;
 
 	command->id = list->next_id++;
 
@@ -185,4 +186,3 @@ out:
 	return err;
 }
 
-#endif /* H_COMMAND */

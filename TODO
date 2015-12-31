@@ -74,3 +74,14 @@ to perform:
 	  with the first breakpoint.
 
   PTRACE CONTINUE
+
+
+
+
+TODO:
+  Move ptrace_* and ptracer_* into a seperate file.
+    Just make them extern functions so the header isn't bloated.
+	the ptracer_* stuff needs to set which state
+	(stopped ; ptrace_stopped; running) the process is in so that
+	stopping and continuing go through the correct paths:
+	SIGCONT (from SIGSTOP) vs PTRACE_CONT (ptrace_stopped).

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "list.h"
+#include "shared/list.h"
 
 /* This is really where speed and size become important. There could be
  * hundreds of thousands of matches for any given value.  And even more so
@@ -90,20 +90,21 @@ struct match_chunk_header {
 	unsigned long used;
 };
 
-#define MATCH_CHUNK_SIZE_large  (4096)
-#define MATCH_CHUNK_SIZE_medium (2048)
-#define MATCH_CHUNK_SIZE_small  (1024)
-#define MATCH_CHUNK_SIZE_tiny   (512)
+
+#define MATCH_CHUNK_NELEMENTS(sz) \
+	((MATCH_CHUNK_SIZE_##sz - sizeof(struct match_chunk_header)) \
+		/ sizeof(struct match_object))
 
 #define DEFINE_MATCH_CHUNK(sz) \
 	struct match_chunk_##sz { \
 		struct match_chunk_header head; \
-		struct match_chunk_object[ MATCH_CHUNK_NELEMENTS(sz) ]; \
+		struct match_object objects[ MATCH_CHUNK_NELEMENTS(sz) ]; \
 	}
 
-#define MATCH_CHUNK_NELEMENTS(sz) \
-	((MATCH_CHUNK_SIZE_##sz - sizeof(struct match_chunk_head)) \
-		/ sizeof(struct match_object))
+#define MATCH_CHUNK_SIZE_large  (4096)
+#define MATCH_CHUNK_SIZE_medium (2048)
+#define MATCH_CHUNK_SIZE_small  (1024)
+#define MATCH_CHUNK_SIZE_tiny   (512)
 
 DEFINE_MATCH_CHUNK( large  );
 DEFINE_MATCH_CHUNK( medium );

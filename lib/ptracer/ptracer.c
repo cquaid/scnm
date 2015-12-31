@@ -1,15 +1,17 @@
-#include <sys/ptracer.h>
+#include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 
+#include <errno.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "util.h"
-#include "list.h"
+#include "shared/util.h"
+#include "shared/list.h"
 #include "ptracer.h"
 
 /*
@@ -37,13 +39,13 @@
 
 
 
-#define breakpoint_entry(node) \
-	list_entry(node, struct ptracer_breakpoint, node)
+#define breakpoint_entry(entry) \
+	list_entry(entry, struct ptracer_breakpoint, node)
 
 static int
 __ptrace_waitpid(pid_t pid, int *out_status, int options)
 {
-	pid_t pid;
+	pid_t perr;
 
 	perr = waitpid(pid, out_status, options);
 
@@ -59,6 +61,8 @@ __ptrace_waitpid(pid_t pid, int *out_status, int options)
 static inline int
 __ptrace_cont_and_wait(pid_t pid, int *out_status, int options)
 {
+	int err;
+
 	err = ptrace_cont(pid);
 
 	if (err != 0)
@@ -95,7 +99,7 @@ ptracer_init(struct ptracer_ctx *ctx, pid_t pid)
 {
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->pid = pid;
-	list_head_init(&(ctx->breakpoints.head));
+	list_head_init(&(ctx->breakpoints));
 }
 
 void
@@ -104,7 +108,7 @@ ptracer_fini(struct ptracer_ctx *ctx)
 	struct list_head *next;
 	struct list_head *entry;
 
-	list_for_each_safe(entry, next, &(ctx->breakpoints.head)) {
+	list_for_each_safe(entry, next, &(ctx->breakpoints)) {
 		struct ptracer_breakpoint *node;
 
 		list_del(entry);
@@ -179,7 +183,7 @@ breakpoint_resume(struct ptracer_ctx *ctx,
 		return -1;
 	}
 
-	err = ptrace_singlestep_waitpid(ctx, &wait_status, 0);
+	err = ptracer_singlestep_waitpid(ctx, &wait_status, 0);
 
 	/* Note different return value check. */
 	if (err < 0) {
@@ -233,7 +237,7 @@ ptracer_set_breakpoint(struct ptracer_ctx *ctx,
 	node->callback = cb;
 	node->addr = addr;
 
-	list_add(&(node->node), &(ctx->breakpoints.head));
+	list_add(&(node->node), &(ctx->breakpoints));
 
 	if (ctx->started)
 		return breakpoint_enable(ctx, node);
@@ -255,20 +259,20 @@ ptracer_clobber_addr(struct ptracer_ctx *ctx,
 
 	rem_len = length / sizeof(data);
 
-	if (idx != 0) {
+	if (rem_len != 0) {
 		size_t i;
 
 		memset(&data, 0x90, sizeof(data));
 
 		for (i = 0; i < rem_len; ++i) {
-			err = ptracer_poketext(ctx, laddr, data);
+			err = ptracer_poketext(ctx, left_addr, data);
 
 			if (err != 0) {
 				/* ptrace error */
 				return -1;
 			}
 
-			ladd += (i + 1) * sizeof(data);
+			left_addr += (i + 1) * sizeof(data);
 		}
 	}
 
@@ -278,7 +282,7 @@ ptracer_clobber_addr(struct ptracer_ctx *ctx,
 	if (rem_len == 0)
 		return 0;
 
-	err = ptracer_peektext(ctx, laddr, &data);
+	err = ptracer_peektext(ctx, left_addr, &data);
 
 	if (err != 0) {
 		/* ptrace error */
@@ -289,7 +293,7 @@ ptracer_clobber_addr(struct ptracer_ctx *ctx,
 	 * regardless of endianess. */
 	memset(&data, 0x90, rem_len);
 
-	return ptracer_poketext(ctx, laddr, data);
+	return ptracer_poketext(ctx, left_addr, data);
 }
 
 
@@ -320,8 +324,8 @@ ptracer_run(struct ptracer_ctx *ctx)
 	ctx->started = 1;
 
 	/* Set the breakpoints. */
-	list_for_each(entry, &(ctx->breakpoints.head)) {
-		err = breakpoint_enable( breakpoint_entry(entry) );
+	list_for_each(entry, &(ctx->breakpoints)) {
+		err = breakpoint_enable(ctx, breakpoint_entry(entry));
 
 		if (err != 0) {
 			/* ptrace error */
@@ -391,7 +395,7 @@ ptracer_run(struct ptracer_ctx *ctx)
 		/* Call the found breakpoint callback. */
 		ctx->current_breakpoint = node;
 
-		if (node->callback != (ptracer_breakpoint_cb)0)
+		if (node->callback != (ptracer_breakpoint_callback)0)
 			node->callback(ctx);
 
 		/* Resume execution and wait on next event. */
@@ -422,7 +426,7 @@ ptracer_run(struct ptracer_ctx *ctx)
 /* ptrace call wrappers */
 
 int
-ptrace_peektext(pid_t, unsigned long addr, unsigned long *out)
+ptrace_peektext(pid_t pid, unsigned long addr, unsigned long *out)
 {
 	long val;
 

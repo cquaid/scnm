@@ -1,6 +1,8 @@
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "match.h"
@@ -71,6 +73,7 @@ match_flags_set_floating(const char *value, union match_flags *flags)
 	errno = 0;
 	endptr = NULL;
 	f = strtof(value, &endptr);
+	(void)f;
 
 	/* This would result in a parse falure for double as well
 	 * so just fail out. */
@@ -88,6 +91,7 @@ match_flags_set_floating(const char *value, union match_flags *flags)
 	errno = 0;
 	endptr = NULL;
 	d = strtod(value, &endptr);
+	(void)d;
 
 	if ((errno != 0) && (*endptr != '\0'))
 		return false;

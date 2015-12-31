@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#include "list.h"
+#include "shared/list.h"
 
 /* TODO: Hash Table */
 

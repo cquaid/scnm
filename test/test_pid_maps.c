@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "list.h"
+#include "shared/list.h"
 #include "pid_maps.h"
 #include "region.h"
 

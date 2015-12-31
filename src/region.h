@@ -1,7 +1,7 @@
 #ifndef H_REGION
 #define H_REGION
 
-#include "list.h"
+#include "shared/list.h"
 
 struct region {
 	struct list_head node;

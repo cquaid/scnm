@@ -6,7 +6,7 @@
 #include <string.h>
 #include <regex.h>
 
-#include "list.h"
+#include "shared/list.h"
 #include "region.h"
 
 void

@@ -1,18 +1,18 @@
 #ifndef H_LIB_PTRACER
 #define H_LIB_PTRACER
 
-#include <sys/ptracer.h>
+#include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/user.h>
 
 #include <signal.h>
-#include <stddef.g>
+#include <stddef.h>
 
-#include "list.h"
+#include "shared/list.h"
 
 struct ptracer_ctx;
 /* Used when stopped at a breakpoint */
-typedef void (*ptracer_breakpoint_cb)(struct ptracer_ctx *);
+typedef void (*ptracer_breakpoint_callback)(struct ptracer_ctx *);
 
 /* Node for the breakpoint list.
  * Describes where the breakpoint was set,
@@ -21,7 +21,7 @@ typedef void (*ptracer_breakpoint_cb)(struct ptracer_ctx *);
  */
 struct ptracer_breakpoint {
 	struct list_head node;
-	ptracer_breakpoint_cb callback;
+	ptracer_breakpoint_callback callback;
 
 	unsigned long addr;
 	unsigned long orig_data;
@@ -35,9 +35,9 @@ struct ptracer_ctx {
 	int process_status;
 
 	struct list_head breakpoints;
-	struct ptracer_breakpoing *current_breakpoint;
+	struct ptracer_breakpoint *current_breakpoint;
 
-	ptracer_breakpoint_cb run_callback;
+	ptracer_breakpoint_callback run_callback;
 
 	struct user_regs_struct regs;
 	struct user_fpregs_struct fpregs;
@@ -65,7 +65,7 @@ static inline void
 ptracer_set_run_callback(struct ptracer_ctx *ctx,
 	ptracer_breakpoint_callback cb)
 {
-	ctx->callback = cb;
+	ctx->run_callback = cb;
 }
 
 
@@ -220,13 +220,13 @@ ptrace_attach(pid_t pid)
 extern int
 ptrace_attach_waitpid(pid_t pid, int *out_status, int options);
 
-#define ptracer_detatch(ctx) \
+#define ptracer_detach(ctx) \
 	ptrace_detatch((ctx)->pid)
 
 static inline int
-ptrace_detatch(pid_t pid)
+ptrace_detach(pid_t pid)
 {
-	return (ptrace(PTRACE_DETATCH, pid, 0, 0) == -1);
+	return (ptrace(PTRACE_DETACH, pid, 0, 0) == -1);
 }
 
 #endif /* H_LIB_PTRACER */
