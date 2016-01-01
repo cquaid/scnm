@@ -111,3 +111,4 @@ region_list_filter_out_regex(struct region_list *list, const char *regex);
 extern void region_filter_list_destroy(struct region_filter_list *list);
 
 #endif /* H_REGION */
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

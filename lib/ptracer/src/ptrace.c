@@ -908,3 +908,4 @@ ptrace_detach(pid_t pid)
     return (ptrace(PTRACE_DETACH, pid, 0, 0) == -1);
 }
 
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

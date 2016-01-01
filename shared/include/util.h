@@ -15,3 +15,4 @@
     })
 
 #endif /* H_UTIL */
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

@@ -54,3 +54,4 @@ extern int register_command(struct command_list *list,
 extern int exec_line(struct command_list *list, const char *line);
 
 #endif /* H_COMMAND */
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

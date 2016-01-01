@@ -331,3 +331,5 @@ region_list_filter_out_basename(struct region_list *list, const char *name)
 
     return ret;
 }
+
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

@@ -122,3 +122,4 @@ match_flags_set_floating(const char *value, union match_flags *flags);
 /* TODO: strings and AOB */
 
 #endif /* H_MATCH */
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

@@ -202,3 +202,4 @@ extern int ptracer_waitpid(struct ptracer_ctx *ctx, int *out_status,
 extern int ptrace_waitpid(pid_t pid, int *out_status, int options);
 
 #endif /* H_LIB_PTRACER */
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */

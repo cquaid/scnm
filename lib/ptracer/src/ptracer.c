@@ -399,3 +399,4 @@ ptracer_run(struct ptracer_ctx *ctx)
     return -1;
 }
 
+/* vim: set et ts=4 sts=4 sw=4 syntax=c : */
