@@ -37,38 +37,21 @@
 		__ret; \
 	})
 
-
-
 #define breakpoint_entry(entry) \
 	list_entry(entry, struct ptracer_breakpoint, node)
 
-static int
-__ptrace_waitpid(pid_t pid, int *out_status, int options)
-{
-	pid_t perr;
-
-	perr = waitpid(pid, out_status, options);
-
-	if (perr == (pid_t)-1)
-		return -1;
-
-	/* 0 - no children changed status (WNOHANG option)
-	 * 1 - sccess
-	 */
-	return (perr != (pid_t)0);
-}
 
 static inline int
-__ptrace_cont_and_wait(pid_t pid, int *out_status, int options)
+__ptracer_cont_and_wait(struct ptracer_ctx *ctx, int *out_status, int options)
 {
 	int err;
 
-	err = ptrace_cont(pid);
+	err = ptracer_cont(ctx);
 
 	if (err != 0)
 		return -1;
 
-	return  __ptrace_waitpid(pid, out_status, options);
+	return ptracer_waitpid(ctx, out_status, options);
 }
 
 
@@ -148,12 +131,6 @@ breakpoint_resume(struct ptracer_ctx *ctx,
 	struct ptracer_breakpoint *node)
 {
 	int err;
-	int wait_status;
-
-	/* TODO: On ptracer_* error, check errno for ESRCH versus
-     * other possible returns. ESRCH means the process has
-     * exited and we should stop.
-     */
 
 	err = ptracer_getregs(ctx, &(ctx->regs));
 
@@ -183,18 +160,17 @@ breakpoint_resume(struct ptracer_ctx *ctx,
 		return -1;
 	}
 
-	err = ptracer_singlestep_waitpid(ctx, &wait_status, 0);
+	err = ptracer_singlestep_waitpid(ctx, NULL, 0);
 
-	/* Note different return value check. */
-	if (err < 0) {
+	/* 0 shouldn't happen */
+	if (err <= 0) {
 		/* ptrace or waitpid error */
 		return -1;
 	}
 
-	ctx->process_status = wait_status;
-
-	if (WIFEXITED(wait_status))
-		return 0; /* process exited. */
+	/* Process terminated. */
+	if (PTRACER_PROC_IS_DEAD(ctx))
+		return 0;	
 
 	/* Re-enable the breakpoint and let the process run. */
 	err = breakpoint_enable(ctx, node);
@@ -204,19 +180,20 @@ breakpoint_resume(struct ptracer_ctx *ctx,
 		return -1;
 	}
 
-	err = __ptrace_cont_and_wait(ctx->pid, &wait_status, 0);
+	err = __ptracer_cont_and_wait(ctx, NULL, 0);
 
-	if (err < 0) {
+	/* 0 shouldn't happen */
+	if (err <= 0) {
 		/* ptrace or waitpid error */
 		return -1;
 	}
 
-	ctx->process_status = wait_status;
-
-	if (WIFEXITED(wait_status))
+	/* Process terminated. */
+	if (PTRACER_PROC_IS_DEAD(ctx))
 		return 0;
 
-	if (WIFSTOPPED(wait_status))
+	/* Process was stopped somehow. */
+	if (PTRACER_PROC_IS_STOPPED(ctx))
 		return 1;
 
 	return -1;
@@ -338,25 +315,29 @@ ptracer_run(struct ptracer_ctx *ctx)
 	if (ctx->run_callback != NULL)
 		ctx->run_callback(ctx);
 
-	err = __ptrace_cont_and_wait(ctx->pid, &wait_status, 0);
+	err = __ptracer_cont_and_wait(ctx, &wait_status, 0);
 
-	if (err < 0) {
+	/* 0 shouldn't happen */
+	if (err <= 0) {
 		/* ptrace or waitpid error */
 		return -1;
 	}
 
-	ctx->process_status = wait_status;
-
-	if (WIFEXITED(wait_status))
+	/* Process terminated. */
+	if (PTRACER_PROC_IS_DEAD(ctx))
 		return 0;
 
-	if (!WIFSTOPPED(wait_status))
+	/* Process was not stopped */
+	if (!PTRACER_PROC_IS_STOPPED(ctx))
 		return -1;
+
 
 	for (;;) {
 		struct ptracer_breakpoint *node;
 
-		/* Very likely that a trap occured. */
+		/* Each iteration at this point it is very likely
+		 * that a trap occured. */
+
 		err = ptracer_getregs(ctx, &(ctx->regs));
 
 		if (err != 0) {
@@ -373,21 +354,22 @@ ptracer_run(struct ptracer_ctx *ctx)
 					get_inst_ptr(&(ctx->regs)) - 1);
 
 		if (node == NULL) {
-			/* Seems we did not hit a trap for out of our breakpoints. */
-			err = __ptrace_cont_and_wait(ctx->pid, &wait_status, 0);
+			/* Seems we did not hit a trap for one of our breakpoints. */
+			err = __ptracer_cont_and_wait(ctx, &wait_status, 0);
 
-			if (err < 0) {
+			/* 0 shouldn't happen */
+			if (err <= 0) {
 				/* ptrace or waitpid error */
 				return -1;
 			}
 
-			ctx->process_status = wait_status;
-
-			if (WIFEXITED(wait_status))
+			/* Process terminated. */
+			if (PTRACER_PROC_IS_DEAD(ctx))
 				return 0;
 
-			if (!WIFSTOPPED(wait_status))
-				return 1;
+			/* Process was not stopped */
+			if (!PTRACER_PROC_IS_STOPPED(ctx))
+				return -1;
 
 			continue;
 		}
@@ -395,7 +377,7 @@ ptracer_run(struct ptracer_ctx *ctx)
 		/* Call the found breakpoint callback. */
 		ctx->current_breakpoint = node;
 
-		if (node->callback != (ptracer_breakpoint_callback)0)
+		if (node->callback != NULL)
 			node->callback(ctx);
 
 		/* Resume execution and wait on next event. */
@@ -417,62 +399,3 @@ ptracer_run(struct ptracer_ctx *ctx)
 	return -1;
 }
 
-
-
-
-
-
-
-/* ptrace call wrappers */
-
-int
-ptrace_peektext(pid_t pid, unsigned long addr, unsigned long *out)
-{
-	long val;
-
-	errno = 0;
-	val = ptrace(PTRACE_PEEKTEXT, pid, (void *)addr, 0);
-
-	if (errno != 0)
-		return 1;
-
-	*out = *(unsigned long *)&val;
-
-	return 0;
-}
-
-int
-ptrace_singlestep_waitpid(pid_t pid, int *out_status, int options)
-{
-	if (ptrace_singlestep(pid) != 0)
-		return -1;
-
-	return __ptrace_waitpid(pid, out_status, options);
-}
-
-int
-ptrace_syscall_waitpid(pid_t pid, int *out_status, int options)
-{
-	if (ptrace_syscall(pid) != 0)
-		return -1;
-
-	return __ptrace_waitpid(pid, out_status, options);
-}
-
-int
-ptrace_stop_waitpid(pid_t pid, int *out_status, int options)
-{
-	if (ptrace_stop(pid) != 0)
-		return -1;
-
-	return __ptrace_waitpid(pid, out_status, options);
-}
-
-int
-ptrace_attach_waitpid(pid_t pid, int *out_status, int options)
-{
-	if (ptrace_attach(pid) != 0)
-		return -1;
-
-	return __ptrace_waitpid(pid, out_status, options);
-}
