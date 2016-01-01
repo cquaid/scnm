@@ -29,6 +29,7 @@ SRC := \
 	command.c \
 	match.c \
 	pid_maps.c \
+	pid_mem.c \
 	region.c
 #	server.c
 

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "pid_maps.h"
 #include "region.h"
@@ -130,18 +131,78 @@ parse_line(const char *line, struct mapping *mapping)
     if (ret >= 10)
         return 0;
 
-    if (ret == 0)
-        return EOF;
+    /* EOF case, just pipe break it... */
+    if (ret == 0) {
+        errno = EPIPE;
+        return -1;
+    }
 
     return ret;
 }
 
+static inline int
+get_maps_name(pid_t pid, char *buf, size_t size)
+{
+    int err;
 
+    err = snprintf(buf, size, "/proc/%u/maps",
+                (unsigned int)pid);
+
+    if (err < 0)
+        return err;
+
+    if ((size_t)err >= size) {
+        errno = ERANGE; /* EOVERFLOW? */
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Determine if the caller has access to read the
+ * /proc/<pid>/maps file of the given process id.
+ *
+ * @param[in] pid - process id to check
+ *
+ * @return 0 on success
+ * @return < 0 on failure with error returned in errno
+ */
+int
+can_read_pid_maps(pid_t pid)
+{
+    int err;
+    char maps_path[64];
+
+    /* This should never fail. */
+    err = get_maps_name(pid, maps_path, sizeof(maps_path));
+
+    if (err < 0)
+        return err;
+
+    return access(maps_path, R_OK);
+}
+
+/**
+ * Parse /proc/<pid>/maps and return a list of
+ * accessable memory regions for the process.
+ *
+ * @param[in] pid - process id to get maps from
+ * @param[out] list - initialized region_list to store region info in.
+ *
+ * @note
+ *  At the moment, this function only returns regions
+ *  with both read and write permissions set.
+ *
+ * @return 0 on success
+ * @return < 0 on failure with error stored in errno
+ */
 int
 process_pid_maps(pid_t pid, struct region_list *list)
 {
     int err;
     int ret = -1;
+    int oerrno;
 
     char maps_path[64];
     FILE *maps_file = NULL;
@@ -152,29 +213,17 @@ process_pid_maps(pid_t pid, struct region_list *list)
     struct mapping *mapping = NULL;
     size_t mapping_len = 0;
 
-    /* Create path name. */
-    err = snprintf(maps_path, sizeof(maps_path),
-                "/proc/%u/maps", (unsigned int)pid);
+    /* This should never fail. */
+    err = get_maps_name(pid, maps_path, sizeof(maps_path));
 
-    if (err >= (int)sizeof(maps_path)) {
-        errno = E2BIG;
-        err = -1;
-    }
-
-    if (err < 0) {
-        fprintf(stderr, "snprintf(): (%d) %s\n",
-            errno, strerror(errno));
+    if (err < 0)
         return ret;
-    }
 
     /* Open maps file. */
     maps_file = fopen(maps_path, "r");
 
-    if (maps_file == NULL) {
-        fprintf(stderr, "fopen(%s): (%d) %s\n",
-            maps_path, errno, strerror(errno));
+    if (maps_file == NULL)
         return ret;
-    }
 
     region_list_init(list);
 
@@ -191,11 +240,8 @@ process_pid_maps(pid_t pid, struct region_list *list)
 
             mapping = malloc(new_size);
 
-            if (mapping == NULL) {
-                fprintf(stderr, "realloc(%zd): (%d) %s\n",
-                    new_size, errno, strerror(errno));
+            if (mapping == NULL)
                 goto out;
-            }
 
             mapping_len = new_size;
         }
@@ -206,35 +252,18 @@ process_pid_maps(pid_t pid, struct region_list *list)
         /* Parse a line from the maps file. */
         err = parse_line(line, mapping);
 
-        if (err < 0) {
-            fprintf(stderr, "snprintf(): (%d) %s\n",
-                errno, strerror(errno));
+        if (err < 0)
             goto out;
-        }
 
         /* Skip if not read and write. */
         if ((mapping->perms.write != 'w') || (mapping->perms.read != 'r'))
             continue;
-#if 0
-        fprintf(stderr,
-            "%lx-%lx %c%c%c%c %lx %02x:%02x %lu    %s\n",
-            mapping->address.start, mapping->address.end,
-            mapping->perms.read, mapping->perms.write,
-            mapping->perms.exec, mapping->perms.cow,
-            mapping->offset,
-            mapping->dev.major, mapping->dev.minor,
-            mapping->inode,
-            mapping->pathname);
-#endif
 
         /* Allocate a new region. */
         region = new_region_from_mapping(mapping);
 
-        if (region == NULL) {
-            fprintf(stderr, "malloc(): (%d) %s\n",
-                errno, strerror(errno));
+        if (region == NULL)
             goto out;
-        }
 
         region_list_add(list, region);
     }
@@ -242,6 +271,10 @@ process_pid_maps(pid_t pid, struct region_list *list)
     ret = 0;
 
 out:
+
+    /* Try not to clobber errno. */
+    if (ret < 0)
+        oerrno = errno;
 
     if (ret != 0)
         region_list_clear(list);
@@ -253,6 +286,10 @@ out:
         free(line);
 
     fclose(maps_file);
+
+    /* Restore errno. */
+    if (ret < 0)
+        errno = oerrno;
 
     return ret;
 }
