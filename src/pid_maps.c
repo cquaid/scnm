@@ -55,204 +55,204 @@
  */
 
 struct mapping {
-	struct {
-		unsigned long start;
-		unsigned long end;
-	} address;
+    struct {
+        unsigned long start;
+        unsigned long end;
+    } address;
 
-	struct {
-		unsigned char read;
-		unsigned char write;
-		unsigned char exec;
-		unsigned char cow;
-	} perms;
+    struct {
+        unsigned char read;
+        unsigned char write;
+        unsigned char exec;
+        unsigned char cow;
+    } perms;
 
-	unsigned long offset;
+    unsigned long offset;
 
-	struct {
-		unsigned int major;
-		unsigned int minor;
-	} dev;
+    struct {
+        unsigned int major;
+        unsigned int minor;
+    } dev;
 
-	unsigned long inode;
+    unsigned long inode;
 
-	char pathname[1];
+    char pathname[1];
 };
 
 static inline struct region *
 new_region_from_mapping(const struct mapping *mapping)
 {
-	size_t len;
-	size_t slen;
-	struct region *ret;
+    size_t len;
+    size_t slen;
+    struct region *ret;
 
-	slen = strlen(mapping->pathname);
-	len = sizeof(*ret) + slen;
+    slen = strlen(mapping->pathname);
+    len = sizeof(*ret) + slen;
 
-	ret = malloc(len);
+    ret = malloc(len);
 
-	if (ret == NULL)
-		return NULL;
+    if (ret == NULL)
+        return NULL;
 
-	ret->id = 0; /* Temporary */
+    ret->id = 0; /* Temporary */
 
-	ret->start = mapping->address.start;
-	ret->end = mapping->address.end;
+    ret->start = mapping->address.start;
+    ret->end = mapping->address.end;
 
-	ret->perms.read  = (mapping->perms.read == 'r');
-	ret->perms.write = (mapping->perms.write == 'w');
-	ret->perms.exec  = (mapping->perms.exec == 'x');
+    ret->perms.read  = (mapping->perms.read == 'r');
+    ret->perms.write = (mapping->perms.write == 'w');
+    ret->perms.exec  = (mapping->perms.exec == 'x');
 
-	ret->perms.private = (mapping->perms.cow == 'p');
-	ret->perms.shared  = (mapping->perms.cow == 's');
+    ret->perms.private = (mapping->perms.cow == 'p');
+    ret->perms.shared  = (mapping->perms.cow == 's');
 
-	memcpy(ret->pathname, mapping->pathname, slen + 1);
+    memcpy(ret->pathname, mapping->pathname, slen + 1);
 
-	return ret;
+    return ret;
 }
 
 
 static inline int
 parse_line(const char *line, struct mapping *mapping)
 {
-	int ret;
+    int ret;
 
-	ret = sscanf(line,
-			"%lx-%lx %c%c%c%c %lx %x:%x %lu %s",
-			&(mapping->address.start), &(mapping->address.end),
-			&(mapping->perms.read), &(mapping->perms.write),
-			&(mapping->perms.exec), &(mapping->perms.cow),
-			&(mapping->offset),
-			&(mapping->dev.major), &(mapping->dev.minor),
-			&(mapping->inode),
-			mapping->pathname);
+    ret = sscanf(line,
+            "%lx-%lx %c%c%c%c %lx %x:%x %lu %s",
+            &(mapping->address.start), &(mapping->address.end),
+            &(mapping->perms.read), &(mapping->perms.write),
+            &(mapping->perms.exec), &(mapping->perms.cow),
+            &(mapping->offset),
+            &(mapping->dev.major), &(mapping->dev.minor),
+            &(mapping->inode),
+            mapping->pathname);
 
-	if (ret >= 10)
-		return 0;
+    if (ret >= 10)
+        return 0;
 
-	if (ret == 0)
-		return EOF;
+    if (ret == 0)
+        return EOF;
 
-	return ret;
+    return ret;
 }
 
 
 int
 process_pid_maps(pid_t pid, struct region_list *list)
 {
-	int err;
-	int ret = -1;
+    int err;
+    int ret = -1;
 
-	char maps_path[64];
-	FILE *maps_file = NULL;
+    char maps_path[64];
+    FILE *maps_file = NULL;
 
-	char *line = NULL;
-	size_t line_len = 0;
+    char *line = NULL;
+    size_t line_len = 0;
 
-	struct mapping *mapping = NULL;
-	size_t mapping_len = 0;
+    struct mapping *mapping = NULL;
+    size_t mapping_len = 0;
 
-	/* Create path name. */
-	err = snprintf(maps_path, sizeof(maps_path),
-				"/proc/%u/maps", (unsigned int)pid);
+    /* Create path name. */
+    err = snprintf(maps_path, sizeof(maps_path),
+                "/proc/%u/maps", (unsigned int)pid);
 
-	if (err >= (int)sizeof(maps_path)) {
-		errno = E2BIG;
-		err = -1;
-	}
+    if (err >= (int)sizeof(maps_path)) {
+        errno = E2BIG;
+        err = -1;
+    }
 
-	if (err < 0) {
-		fprintf(stderr, "snprintf(): (%d) %s\n",
-			errno, strerror(errno));
-		return ret;
-	}
+    if (err < 0) {
+        fprintf(stderr, "snprintf(): (%d) %s\n",
+            errno, strerror(errno));
+        return ret;
+    }
 
-	/* Open maps file. */
-	maps_file = fopen(maps_path, "r");
+    /* Open maps file. */
+    maps_file = fopen(maps_path, "r");
 
-	if (maps_file == NULL) {
-		fprintf(stderr, "fopen(%s): (%d) %s\n",
-			maps_path, errno, strerror(errno));
-		return ret;
-	}
+    if (maps_file == NULL) {
+        fprintf(stderr, "fopen(%s): (%d) %s\n",
+            maps_path, errno, strerror(errno));
+        return ret;
+    }
 
-	region_list_init(list);
+    region_list_init(list);
 
-	while (getline(&line, &line_len, maps_file) != -1) {
-		size_t new_size;
-		struct region *region;
+    while (getline(&line, &line_len, maps_file) != -1) {
+        size_t new_size;
+        struct region *region;
 
-		/* Resize if necessary. */
-		new_size = sizeof(*mapping) + line_len;
+        /* Resize if necessary. */
+        new_size = sizeof(*mapping) + line_len;
 
-		if (new_size > mapping_len) {
-			/* Not using realloc() to avoid additional data move. */
-			free(mapping);
+        if (new_size > mapping_len) {
+            /* Not using realloc() to avoid additional data move. */
+            free(mapping);
 
-			mapping = malloc(new_size);
+            mapping = malloc(new_size);
 
-			if (mapping == NULL) {
-				fprintf(stderr, "realloc(%zd): (%d) %s\n",
-					new_size, errno, strerror(errno));
-				goto out;
-			}
+            if (mapping == NULL) {
+                fprintf(stderr, "realloc(%zd): (%d) %s\n",
+                    new_size, errno, strerror(errno));
+                goto out;
+            }
 
-			mapping_len = new_size;
-		}
+            mapping_len = new_size;
+        }
 
-		/* Clear the file name. */
-		memset(mapping->pathname, 0, mapping_len - sizeof(*mapping) + 1);
+        /* Clear the file name. */
+        memset(mapping->pathname, 0, mapping_len - sizeof(*mapping) + 1);
 
-		/* Parse a line from the maps file. */
-		err = parse_line(line, mapping);
+        /* Parse a line from the maps file. */
+        err = parse_line(line, mapping);
 
-		if (err < 0) {
-			fprintf(stderr, "snprintf(): (%d) %s\n",
-				errno, strerror(errno));
-			goto out;
-		}
+        if (err < 0) {
+            fprintf(stderr, "snprintf(): (%d) %s\n",
+                errno, strerror(errno));
+            goto out;
+        }
 
-		/* Skip if not read and write. */
-		if ((mapping->perms.write != 'w') || (mapping->perms.read != 'r'))
-			continue;
+        /* Skip if not read and write. */
+        if ((mapping->perms.write != 'w') || (mapping->perms.read != 'r'))
+            continue;
 #if 0
-		fprintf(stderr,
-			"%lx-%lx %c%c%c%c %lx %02x:%02x %lu    %s\n",
-			mapping->address.start, mapping->address.end,
-			mapping->perms.read, mapping->perms.write,
-			mapping->perms.exec, mapping->perms.cow,
-			mapping->offset,
-			mapping->dev.major, mapping->dev.minor,
-			mapping->inode,
-			mapping->pathname);
+        fprintf(stderr,
+            "%lx-%lx %c%c%c%c %lx %02x:%02x %lu    %s\n",
+            mapping->address.start, mapping->address.end,
+            mapping->perms.read, mapping->perms.write,
+            mapping->perms.exec, mapping->perms.cow,
+            mapping->offset,
+            mapping->dev.major, mapping->dev.minor,
+            mapping->inode,
+            mapping->pathname);
 #endif
 
-		/* Allocate a new region. */
-		region = new_region_from_mapping(mapping);
+        /* Allocate a new region. */
+        region = new_region_from_mapping(mapping);
 
-		if (region == NULL) {
-			fprintf(stderr, "malloc(): (%d) %s\n",
-				errno, strerror(errno));
-			goto out;
-		}
+        if (region == NULL) {
+            fprintf(stderr, "malloc(): (%d) %s\n",
+                errno, strerror(errno));
+            goto out;
+        }
 
-		region_list_add(list, region);
-	}
+        region_list_add(list, region);
+    }
 
-	ret = 0;
+    ret = 0;
 
 out:
 
-	if (ret != 0)
-		region_list_clear(list);
+    if (ret != 0)
+        region_list_clear(list);
 
-	if (mapping != NULL)
-		free(mapping);
+    if (mapping != NULL)
+        free(mapping);
 
-	if (line != NULL)
-		free(line);
+    if (line != NULL)
+        free(line);
 
-	fclose(maps_file);
+    fclose(maps_file);
 
-	return ret;
+    return ret;
 }

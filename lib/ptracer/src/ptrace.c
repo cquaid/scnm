@@ -123,55 +123,55 @@
  */
 int
 ptracer_waitpid(struct ptracer_ctx *ctx,
-	int *out_status, int options)
+    int *out_status, int options)
 {
-	int ret;
-	int status;
+    int ret;
+    int status;
 
-	/* Always grab status so we can set the current state. */
-	ret = ptrace_waitpid(ctx->pid, &status, options);
+    /* Always grab status so we can set the current state. */
+    ret = ptrace_waitpid(ctx->pid, &status, options);
 
-	/* Error or no children changed status.
+    /* Error or no children changed status.
      * No need to store status in this case, just return. */
-	if (ret <= 0)
-		return ret;
+    if (ret <= 0)
+        return ret;
 
-	/* > 0, we got a return from the child. */
+    /* > 0, we got a return from the child. */
 
-	if (WIFEXITED(status) || WIFSIGNALED(status)) {
-		ctx->current_state = PTRACER_PROC_STATE_DEAD;
-		goto out;
-	}
+    if (WIFEXITED(status) || WIFSIGNALED(status)) {
+        ctx->current_state = PTRACER_PROC_STATE_DEAD;
+        goto out;
+    }
 
-	if (WIFSTOPPED(status)) {
-		if (WSTOPSIG(status) == SIGSTOP)
-			ctx->current_state = PTRACER_PROC_STATE_SIG_STOPPED;
-		else
-			ctx->current_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
+    if (WIFSTOPPED(status)) {
+        if (WSTOPSIG(status) == SIGSTOP)
+            ctx->current_state = PTRACER_PROC_STATE_SIG_STOPPED;
+        else
+            ctx->current_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
 
-		goto out;
-	}
+        goto out;
+    }
 
-	/* No state change otherwise.  Realistically we could set
-	 * PTRACER_PROC_STATE_RUNNING since the only other option
+    /* No state change otherwise.  Realistically we could set
+     * PTRACER_PROC_STATE_RUNNING since the only other option
      * is WIFCONTINUED().
      *
      * TODO: If we change to useing waitid() instead. we can
-	 *       explicitly only wait on WEXITED and WSTOPPED
+     *       explicitly only wait on WEXITED and WSTOPPED
      *       events and ignore the continued option. This
-	 *       means we only have to check WIFSTOPPED and just
-	 *       set _DEAD otherwise (since terminated is the
-	 *       only other option).
+     *       means we only have to check WIFSTOPPED and just
+     *       set _DEAD otherwise (since terminated is the
+     *       only other option).
      */
 
 out:
 
-	if (out_status != NULL)
-		*out_status = status;
+    if (out_status != NULL)
+        *out_status = status;
 
-	ctx->process_status = status;
+    ctx->process_status = status;
 
-	return ret;
+    return ret;
 }
 
 /**
@@ -188,11 +188,11 @@ out:
 int
 ptrace_waitpid(pid_t pid, int *out_status, int options)
 {
-	pid_t perr;
+    pid_t perr;
 
-	perr = waitpid(pid, out_status, options);
+    perr = waitpid(pid, out_status, options);
 
-	/* TODO: should we re-try waiting if EINTR is returned?
+    /* TODO: should we re-try waiting if EINTR is returned?
      *       From the man page:
      *
      *  EINTR - WNOHANG was not set and an unblocked signal
@@ -204,13 +204,13 @@ ptrace_waitpid(pid_t pid, int *out_status, int options)
      *  an unhandled signal.
      */
 
-	if (perr == (pid_t)-1)
-		return -1;
+    if (perr == (pid_t)-1)
+        return -1;
 
-	/* 0 - no children changed status (WNOHANG options)
+    /* 0 - no children changed status (WNOHANG options)
      * 1 - success
      */
-	return (perr != (pid_t)0);
+    return (perr != (pid_t)0);
 }
 
 /* PTRACE_PEEKTEXT */
@@ -227,9 +227,9 @@ ptrace_waitpid(pid_t pid, int *out_status, int options)
  */
 int
 ptracer_peektext(struct ptracer_ctx *ctx,
-	unsigned long addr, unsigned long *out)
+    unsigned long addr, unsigned long *out)
 {
-	return ptrace_peektext(ctx->pid, addr, out);
+    return ptrace_peektext(ctx->pid, addr, out);
 }
 
 /**
@@ -245,16 +245,16 @@ ptracer_peektext(struct ptracer_ctx *ctx,
 int
 ptrace_peektext(pid_t pid, unsigned long addr, unsigned long *out)
 {
-	long val;
+    long val;
 
-	errno = 0;
-	val = ptrace(PTRACE_PEEKTEXT, pid, (void *)addr, 0);
+    errno = 0;
+    val = ptrace(PTRACE_PEEKTEXT, pid, (void *)addr, 0);
 
-	if (errno != 0)
-		return 1;
+    if (errno != 0)
+        return 1;
 
-	*out = *(unsigned long *)&val;
-	return 0;
+    *out = *(unsigned long *)&val;
+    return 0;
 }
 
 /* PTRACE_POKETEXT */
@@ -271,9 +271,9 @@ ptrace_peektext(pid_t pid, unsigned long addr, unsigned long *out)
  */
 int
 ptracer_poketext(struct ptracer_ctx *ctx,
-	unsigned long addr, unsigned long out)
+    unsigned long addr, unsigned long out)
 {
-	return ptrace_poketext(ctx->pid, addr, out);
+    return ptrace_poketext(ctx->pid, addr, out);
 }
 
 /**
@@ -289,7 +289,7 @@ ptracer_poketext(struct ptracer_ctx *ctx,
 int
 ptrace_poketext(pid_t pid, unsigned long addr, unsigned long val)
 {
-	return (ptrace(PTRACE_POKETEXT, pid, (void *)addr, (void *)val) == -1);
+    return (ptrace(PTRACE_POKETEXT, pid, (void *)addr, (void *)val) == -1);
 }
 
 /* PTRACE_SINGLESTEP */
@@ -308,8 +308,8 @@ ptrace_poketext(pid_t pid, unsigned long addr, unsigned long val)
 int
 ptracer_singlestep(struct ptracer_ctx *ctx)
 {
-	ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
-	return ptrace_singlestep(ctx->pid);
+    ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
+    return ptrace_singlestep(ctx->pid);
 }
 
 /**
@@ -323,7 +323,7 @@ ptracer_singlestep(struct ptracer_ctx *ctx)
 int
 ptrace_singlestep(pid_t pid)
 {
-	return (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) == -1);
+    return (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) == -1);
 }
 
 /**
@@ -353,12 +353,12 @@ ptrace_singlestep(pid_t pid)
  */
 int
 ptracer_singlestep_waitpid(struct ptracer_ctx *ctx,
-	int *out_status, int options)
+    int *out_status, int options)
 {
-	if (ptracer_singlestep(ctx) != 0)
-		return -1;
+    if (ptracer_singlestep(ctx) != 0)
+        return -1;
 
-	return ptracer_waitpid(ctx, out_status, options);
+    return ptracer_waitpid(ctx, out_status, options);
 }
 
 /**
@@ -376,10 +376,10 @@ ptracer_singlestep_waitpid(struct ptracer_ctx *ctx,
 int
 ptrace_singlestep_waitpid(pid_t pid, int *out_status, int options)
 {
-	if (ptrace_singlestep(pid) != 0)
-		return -1;
+    if (ptrace_singlestep(pid) != 0)
+        return -1;
 
-	return ptrace_waitpid(pid, out_status, options);
+    return ptrace_waitpid(pid, out_status, options);
 }
 
 /* PTRACE_SYSCALL */
@@ -398,8 +398,8 @@ ptrace_singlestep_waitpid(pid_t pid, int *out_status, int options)
 int
 ptracer_syscall(struct ptracer_ctx *ctx)
 {
-	ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
-	return ptrace_syscall(ctx->pid);
+    ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
+    return ptrace_syscall(ctx->pid);
 }
 
 /**
@@ -413,7 +413,7 @@ ptracer_syscall(struct ptracer_ctx *ctx)
 int
 ptrace_syscall(pid_t pid)
 {
-	return (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1);
+    return (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1);
 }
 
 /**
@@ -443,12 +443,12 @@ ptrace_syscall(pid_t pid)
  */
 int
 ptracer_syscall_waitpid(struct ptracer_ctx *ctx,
-	int *out_status, int options)
+    int *out_status, int options)
 {
-	if (ptracer_syscall(ctx) != 0)
-		return -1;
+    if (ptracer_syscall(ctx) != 0)
+        return -1;
 
-	return ptracer_waitpid(ctx, out_status, options);
+    return ptracer_waitpid(ctx, out_status, options);
 }
 
 /**
@@ -466,10 +466,10 @@ ptracer_syscall_waitpid(struct ptracer_ctx *ctx,
 int
 ptrace_syscall_waitpid(pid_t pid, int *out_status, int options)
 {
-	if (ptrace_syscall(pid) != 0)
-		return -1;
+    if (ptrace_syscall(pid) != 0)
+        return -1;
 
-	return ptrace_waitpid(pid, out_status, options);
+    return ptrace_waitpid(pid, out_status, options);
 }
 
 /* PTRACE_GETREGS */
@@ -486,7 +486,7 @@ ptrace_syscall_waitpid(pid_t pid, int *out_status, int options)
 int
 ptracer_getregs(struct ptracer_ctx *ctx, struct user_regs_struct *out_regs)
 {
-	return ptrace_getregs(ctx->pid, out_regs);
+    return ptrace_getregs(ctx->pid, out_regs);
 }
 
 /**
@@ -501,7 +501,7 @@ ptracer_getregs(struct ptracer_ctx *ctx, struct user_regs_struct *out_regs)
 int
 ptrace_getregs(pid_t pid, struct user_regs_struct *out_regs)
 {
-	return (ptrace(PTRACE_GETREGS, pid, 0, (void *)out_regs) == -1);
+    return (ptrace(PTRACE_GETREGS, pid, 0, (void *)out_regs) == -1);
 }
 
 /* PTRACE_GETFPREGS */
@@ -517,9 +517,9 @@ ptrace_getregs(pid_t pid, struct user_regs_struct *out_regs)
  */
 int
 ptracer_getfpregs(struct ptracer_ctx *ctx,
-	struct user_fpregs_struct *out_regs)
+    struct user_fpregs_struct *out_regs)
 {
-	return ptrace_getfpregs(ctx->pid, out_regs);
+    return ptrace_getfpregs(ctx->pid, out_regs);
 }
 
 /**
@@ -534,7 +534,7 @@ ptracer_getfpregs(struct ptracer_ctx *ctx,
 int
 ptrace_getfpregs(pid_t pid, struct user_fpregs_struct *out_regs)
 {
-	return (ptrace(PTRACE_GETFPREGS, pid, 0, (void *)out_regs) == -1);
+    return (ptrace(PTRACE_GETFPREGS, pid, 0, (void *)out_regs) == -1);
 }
 
 /* PTRACE_GETREGS and PTRACE_GETFPREGS */
@@ -551,10 +551,10 @@ ptrace_getfpregs(pid_t pid, struct user_fpregs_struct *out_regs)
  */
 int
 ptracer_get_all_regs(struct ptracer_ctx *ctx,
-	struct user_regs_struct *out_regs,
-	struct user_fpregs_struct *out_fpregs)
+    struct user_regs_struct *out_regs,
+    struct user_fpregs_struct *out_fpregs)
 {
-	return ptrace_get_all_regs(ctx->pid, out_regs, out_fpregs);
+    return ptrace_get_all_regs(ctx->pid, out_regs, out_fpregs);
 }
 
 /**
@@ -569,12 +569,12 @@ ptracer_get_all_regs(struct ptracer_ctx *ctx,
  */
 int
 ptrace_get_all_regs(pid_t pid, struct user_regs_struct *out_regs,
-	struct user_fpregs_struct *out_fpregs)
+    struct user_fpregs_struct *out_fpregs)
 {
-	if (ptrace_getregs(pid, out_regs) != 0)
-		return 1;
+    if (ptrace_getregs(pid, out_regs) != 0)
+        return 1;
 
-	return ptrace_getfpregs(pid, out_fpregs);
+    return ptrace_getfpregs(pid, out_fpregs);
 }
 
 /* PTRACE_SETREGS */
@@ -589,9 +589,9 @@ ptrace_get_all_regs(pid_t pid, struct user_regs_struct *out_regs,
  */
 int
 ptracer_setregs(struct ptracer_ctx *ctx,
-	struct user_regs_struct *regs)
+    struct user_regs_struct *regs)
 {
-	return ptrace_setregs(ctx->pid, regs);
+    return ptrace_setregs(ctx->pid, regs);
 }
 
 /**
@@ -606,7 +606,7 @@ ptracer_setregs(struct ptracer_ctx *ctx,
 int
 ptrace_setregs(pid_t pid, struct user_regs_struct *regs)
 {
-	return (ptrace(PTRACE_SETREGS, pid, 0, (void *)regs) == -1);
+    return (ptrace(PTRACE_SETREGS, pid, 0, (void *)regs) == -1);
 }
 
 /* PTRACE_SETFPREGS */
@@ -622,9 +622,9 @@ ptrace_setregs(pid_t pid, struct user_regs_struct *regs)
  */
 int
 ptracer_setfpregs(struct ptracer_ctx *ctx,
-	struct user_fpregs_struct *regs)
+    struct user_fpregs_struct *regs)
 {
-	return ptrace_setfpregs(ctx->pid, regs);
+    return ptrace_setfpregs(ctx->pid, regs);
 }
 
 /**
@@ -639,7 +639,7 @@ ptracer_setfpregs(struct ptracer_ctx *ctx,
 int
 ptrace_setfpregs(pid_t pid, struct user_fpregs_struct *regs)
 {
-	return (ptrace(PTRACE_SETFPREGS, pid, 0, (void *)regs) == -1);
+    return (ptrace(PTRACE_SETFPREGS, pid, 0, (void *)regs) == -1);
 }
 
 /* PTRACE_SETREGS and PTRACE_SETFPREGS */
@@ -656,10 +656,10 @@ ptrace_setfpregs(pid_t pid, struct user_fpregs_struct *regs)
  */
 int
 ptracer_set_all_regs(struct ptracer_ctx *ctx,
-	struct user_regs_struct *regs,
-	struct user_fpregs_struct *fpregs)
+    struct user_regs_struct *regs,
+    struct user_fpregs_struct *fpregs)
 {
-	return ptrace_set_all_regs(ctx->pid, regs, fpregs);
+    return ptrace_set_all_regs(ctx->pid, regs, fpregs);
 }
 
 /**
@@ -674,12 +674,12 @@ ptracer_set_all_regs(struct ptracer_ctx *ctx,
  */
 int
 ptrace_set_all_regs(pid_t pid, struct user_regs_struct *regs,
-	struct user_fpregs_struct *fpregs)
+    struct user_fpregs_struct *fpregs)
 {
-	if (ptrace_setregs(pid, regs) != 0)
-		return 1;
+    if (ptrace_setregs(pid, regs) != 0)
+        return 1;
 
-	return ptrace_setfpregs(pid, fpregs);
+    return ptrace_setfpregs(pid, fpregs);
 }
 
 /* PTRACE_CONT */
@@ -702,12 +702,12 @@ ptrace_set_all_regs(pid_t pid, struct user_regs_struct *regs,
 int
 ptracer_cont(struct ptracer_ctx *ctx)
 {
-	ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
+    ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
 
-	if (ctx->current_state == PTRACER_PROC_STATE_SIG_STOPPED)
-		return (kill(ctx->pid, SIGCONT) == -1);
+    if (ctx->current_state == PTRACER_PROC_STATE_SIG_STOPPED)
+        return (kill(ctx->pid, SIGCONT) == -1);
 
-	return ptrace_syscall(ctx->pid);
+    return ptrace_syscall(ctx->pid);
 }
 
 /**
@@ -721,7 +721,7 @@ ptracer_cont(struct ptracer_ctx *ctx)
 int
 ptrace_cont(pid_t pid)
 {
-	return (ptrace(PTRACE_CONT, pid, 0, 0) == -1);
+    return (ptrace(PTRACE_CONT, pid, 0, 0) == -1);
 }
 
 /* PTRACER_STOP */
@@ -741,11 +741,11 @@ ptrace_cont(pid_t pid)
 int
 ptracer_stop(struct ptracer_ctx *ctx)
 {
-	ctx->expected_next_state = PTRACER_PROC_STATE_SIG_STOPPED;
+    ctx->expected_next_state = PTRACER_PROC_STATE_SIG_STOPPED;
 
-	/* TODO: do not allow PTRACE_CONT when stopped by SIGSTOP.
+    /* TODO: do not allow PTRACE_CONT when stopped by SIGSTOP.
      * SIGSTOP must be continued with SIGCONT. */
-	return (kill(ctx->pid, SIGSTOP) == -1);
+    return (kill(ctx->pid, SIGSTOP) == -1);
 }
 
 /* There is no ptrace_stop() function as it is not a real ptrace call. */
@@ -776,12 +776,12 @@ ptracer_stop(struct ptracer_ctx *ctx)
  */
 int
 ptracer_stop_waitpid(struct ptracer_ctx *ctx,
-	int *out_status, int options)
+    int *out_status, int options)
 {
-	if (ptracer_stop(ctx) != 0)
-		return -1;
+    if (ptracer_stop(ctx) != 0)
+        return -1;
 
-	return ptracer_waitpid(ctx, out_status, options);
+    return ptracer_waitpid(ctx, out_status, options);
 }
 
 /* PTRACE_ATTACH */
@@ -800,8 +800,8 @@ ptracer_stop_waitpid(struct ptracer_ctx *ctx,
 int
 ptracer_attach(struct ptracer_ctx *ctx)
 {
-	ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
-	return ptrace_attach(ctx->pid);
+    ctx->expected_next_state = PTRACER_PROC_STATE_PTRACE_STOPPED;
+    return ptrace_attach(ctx->pid);
 }
 
 /**
@@ -815,7 +815,7 @@ ptracer_attach(struct ptracer_ctx *ctx)
 int
 ptrace_attach(pid_t pid)
 {
-	return (ptrace(PTRACE_ATTACH, pid, 0, 0) == -1);
+    return (ptrace(PTRACE_ATTACH, pid, 0, 0) == -1);
 }
 
 /**
@@ -845,12 +845,12 @@ ptrace_attach(pid_t pid)
  */
 int
 ptracer_attach_waitpid(struct ptracer_ctx *ctx,
-	int *out_status, int options)
+    int *out_status, int options)
 {
-	if (ptracer_attach(ctx) != 0)
-		return -1;
+    if (ptracer_attach(ctx) != 0)
+        return -1;
 
-	return ptracer_waitpid(ctx, out_status, options);
+    return ptracer_waitpid(ctx, out_status, options);
 }
 
 /**
@@ -868,10 +868,10 @@ ptracer_attach_waitpid(struct ptracer_ctx *ctx,
 int
 ptrace_attach_waitpid(pid_t pid, int *out_status, int options)
 {
-	if (ptrace_attach(pid) != 0)
-		return -1;
+    if (ptrace_attach(pid) != 0)
+        return -1;
 
-	return ptrace_waitpid(pid, out_status, options);
+    return ptrace_waitpid(pid, out_status, options);
 }
 
 /* PTRACE_DETATCH */
@@ -890,8 +890,8 @@ ptrace_attach_waitpid(pid_t pid, int *out_status, int options)
 int
 ptracer_detach(struct ptracer_ctx *ctx)
 {
-	ctx->current_state = PTRACER_PROC_STATE_DETACHED;
-	return ptrace_detach(ctx->pid);
+    ctx->current_state = PTRACER_PROC_STATE_DETACHED;
+    return ptrace_detach(ctx->pid);
 }
 
 /**
@@ -905,6 +905,6 @@ ptracer_detach(struct ptracer_ctx *ctx)
 int
 ptrace_detach(pid_t pid)
 {
-	return (ptrace(PTRACE_DETACH, pid, 0, 0) == -1);
+    return (ptrace(PTRACE_DETACH, pid, 0, 0) == -1);
 }
 
