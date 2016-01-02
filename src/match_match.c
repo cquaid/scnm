@@ -170,6 +170,13 @@ delete_chunk_object(struct match_chunk_header *chunk, size_t slot)
         sizeof(chunk->objects[0]));
 }
 
+#define match_list_delete_entry(list, entry) \
+    do { \
+        list_del(&((entry)->node)); \
+        (list)->size--; \
+        free(entry); \
+    } while (0)
+
 static int
 __match(pid_t pid, struct match_list *list,
     const struct match_needle *needle_1,
@@ -242,10 +249,8 @@ __match(pid_t pid, struct match_list *list,
         }
 
         /* Remove emptied chunks. */
-        if (header->used == 0) {
-            list_del(entry);
-            free(header);
-        }
+        if (header->used == 0)
+            match_list_delete_entry(list, header);
     }
 
     /* Everything has been checked, now consolidate the chunks. */
@@ -281,9 +286,7 @@ __match(pid_t pid, struct match_list *list,
 
             current_chunk->used += header->used;
 
-            /* Use the nested node in case we swapped. */
-            list_del(&(header->node));
-            free(header);
+            match_list_delete_entry(list, header);
 
             /* Full, find a new chunk. */
             if (current_chunk->used == current_chunk->count)
