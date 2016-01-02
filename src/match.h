@@ -1,10 +1,12 @@
 #ifndef H_MATCH
 #define H_MATCH
 
-#include <stdbool.h>
+#include <sys/types.h>
+
 #include <stdint.h>
 
 #include "shared/list.h"
+#include "region.h"
 
 /* This is really where speed and size become important. There could be
  * hundreds of thousands of matches for any given value.  And even more so
@@ -15,27 +17,14 @@
  * list nodes, we use what we're calling "match chunks".  A match chunk
  * is just a large blob containing an array of match objects.
  *
- * There are four sizes of chunks:
- *  match_chunk_large  - 4096
- *  match_chunk_medium - 2048
- *  match_chunk_small  - 1024
- *  match_chunk_tiny   -  512
+ * There are five sizes of chunks:
+ *  tiny   - 50 objects
+ *  small  - 100 objects
+ *  medium - 200 objects
+ *  large  - 400 objects
+ *  huge   - 800 objects
  *
- *
- * A match object is 128 bits (16 bytes) in length.
- *
- * The match_chunk_header is either 16 or 32 bytes depending on architecture.
- *
- * So, the number of elements in a given chunk is:
- *   (sizeof(match_chunk) - sizeof(match_header)) / sizeof(match_object)
- *
- * The following sizes are accurate:
- *  type               | chunk size | # objects (32)  | # objects (64)
- * ---------------------------------------------------------------------
- *  match_chunk_large  | 4096       | 255             | 254
- *  match_chunk_medium | 2048       | 127             | 126
- *  match_chunk_small  | 1024       | 63              | 62
- *  match_chunk_tiny   | 512        | 31              | 30
+ * TODO: Optimize object numbers to call more closely on page boundaries.
  */
 
 /* 8B on both 32 and 64 */
@@ -77,47 +66,130 @@ struct match_object {
     } v;
 
     union match_flags flags;
+    unsigned long addr;
 };
 
-#define MATCH_CHUNK_TYPE_LARGE   (0x00)
-#define MATCH_CHUNK_TYPE_MEDIUM  (0x01)
-#define MATCH_CHUNK_TYPE_SMALL   (0x02)
-#define MATCH_CHUNK_TYPE_TINY    (0x03)
+#define MATCH_CHUNK_SIZE_TINY    (50)
+#define MATCH_CHUNK_SIZE_SMALL   (100)
+#define MATCH_CHUNK_SIZE_MEDIUM  (200)
+#define MATCH_CHUNK_SIZE_LARGE   (400)
+#define MATCH_CHUNK_SIZE_HUGE    (800)
 
 struct match_chunk_header {
     struct list_head node;
-    unsigned long type; /* Unsigned long used for alignment. */
     unsigned long used;
+    unsigned long count;
+    struct match_object objects[1];
 };
 
+struct match_list {
+    struct list_head head;
+    size_t size;    
+};
 
-#define MATCH_CHUNK_NELEMENTS(sz) \
-    ((MATCH_CHUNK_SIZE_##sz - sizeof(struct match_chunk_header)) \
-        / sizeof(struct match_object))
+struct match_needle {
+    struct match_object obj;
+};
 
-#define DEFINE_MATCH_CHUNK(sz) \
-    struct match_chunk_##sz { \
-        struct match_chunk_header head; \
-        struct match_object objects[ MATCH_CHUNK_NELEMENTS(sz) ]; \
-    }
+enum match_range_bound_flags {
+    MRBF_GT_LT = 0,
+    MRBF_GE_LT = 1,
+    MRBF_GT_LE = 2,
+    MRBF_GE_LE = 3
+};
 
-#define MATCH_CHUNK_SIZE_large  (4096)
-#define MATCH_CHUNK_SIZE_medium (2048)
-#define MATCH_CHUNK_SIZE_small  (1024)
-#define MATCH_CHUNK_SIZE_tiny   (512)
+/* Search function options */
+#define SEARCH_OPT_UNALIGNED (0x00)
+#define SEARCH_OPT_ALIGNED   (0x01)
 
-DEFINE_MATCH_CHUNK( large  );
-DEFINE_MATCH_CHUNK( medium );
-DEFINE_MATCH_CHUNK( small  );
-DEFINE_MATCH_CHUNK( tiny   );
+#define SEARCH_OPT_MASK \
+    (SEARCH_OPT_UNALIGNED | SEARCH_OPT_ALIGNED)
+/* TODO: add static vs dynamic range options. */
 
+/* Match list functions */
 
+#define match_list_is_empty(match_list) \
+    list_is_empty(&((match_list)->head))
 
-extern bool
-match_flags_set_integer(const char *value, union match_flags *flags);
+static inline void
+match_list_init(struct match_list *list)
+{
+    list_head_init(&(list->head));
+    list->size = 0;
+}
 
-extern bool
-match_flags_set_floating(const char *value, union match_flags *flags);
+extern void match_list_clear(struct match_list *list);
+
+/* Match needle functions */
+
+extern int match_needle_init(struct match_needle *needle,
+                const char *value);
+
+/* Match functions (already initialized list of match objects) */
+
+extern int match_eq(pid_t pid, struct match_list *list,
+                const struct match_needle *needle);
+extern int match_ne(pid_t pid, struct match_list *list,
+                const struct match_needle *needle);
+
+extern int match_lt(pid_t pid, struct match_list *list,
+                const struct match_needle *needle);
+extern int match_le(pid_t pid, struct match_list *list,
+                const struct match_needle *needle);
+
+extern int match_gt(pid_t pid, struct match_list *list,
+                const struct match_needle *needle);
+extern int match_ge(pid_t pid, struct match_list *list,
+                const struct match_needle *needle);
+
+extern int match_range(pid_t pid, struct match_list *list,
+                const struct match_needle *lower_bound,
+                const struct match_needle *upper_bound,
+                enum match_range_bound_flags flags);
+
+extern int match_changed(pid_t pid, struct match_list *list);
+extern int match_unchanged(pid_t pid, struct match_list *list);
+extern int match_decreased(pid_t pid, struct match_list *list);
+extern int match_increased(pid_t pid, struct match_list *list);
+
+/* Search functions (initalize and create match objects) */
+
+extern int search_eq(pid_t pid, struct match_list *list,
+                const struct match_needle *needle,
+                const struct region_list *regions,
+                int options);
+
+extern int search_ne(pid_t pid, struct match_list *list,
+                const struct match_needle *needle,
+                const struct region_list *regions,
+                int options);
+
+extern int search_lt(pid_t pid, struct match_list *list,
+                const struct match_needle *needle,
+                const struct region_list *regions,
+                int options);
+
+extern int search_le(pid_t pid, struct match_list *list,
+                const struct match_needle *needle,
+                const struct region_list *regions,
+                int options);
+
+extern int search_gt(pid_t pid, struct match_list *list,
+                const struct match_needle *needle,
+                const struct region_list *regions,
+                int options);
+
+extern int search_ge(pid_t pid, struct match_list *list,
+                const struct match_needle *needle,
+                const struct region_list *regions,
+                int options);
+
+extern int search_range(pid_t pid, struct match_list *list,
+                const struct match_needle *lower_bound,
+                const struct match_needle *upper_bound,
+                enum match_range_bound_flags flags,
+                const struct region_list *regions,
+                int options);
 
 /* TODO: strings and AOB */
 

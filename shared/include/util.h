@@ -14,5 +14,13 @@
         (type *)( (char *)__mptr - offsetof(type, member) ); \
     })
 
+#define SWAP(a, b) \
+    do { \
+        typeof( a ) SWAP__tmp = (b); \
+        (b) = (a); \
+        (a) = (SWAP__tmp); \
+    } while (0)
+
 #endif /* H_UTIL */
+
 /* vim: set et ts=4 sts=4 sw=4 syntax=c : */

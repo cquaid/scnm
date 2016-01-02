@@ -27,7 +27,8 @@ OBJ_PATH = $(abspath $(BUILD_DIR_OBJ)/$(CFG)/$(SRC_PATH_TAIL))
 
 SRC := \
 	command.c \
-	match.c \
+	match_init.c \
+	match_match.c \
 	pid_maps.c \
 	pid_mem.c \
 	region.c

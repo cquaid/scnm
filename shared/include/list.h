@@ -154,4 +154,5 @@ list_is_singular(const struct list_head *head)
         pos = n, n = pos->next)
 
 #endif /* H_LIST */
+
 /* vim: set et ts=4 sts=4 sw=4 syntax=c : */
