@@ -10,8 +10,6 @@ Still needs a shell frontend for searching.
 Multithread the frontend so set loops can be implemented properly.
 
 
-Add filtering for the regions list.
-
 Need commands to stop game and to continue game so shell scripts can:
 stop. get address value. process. set. continue. without underlying data changing.
 
@@ -79,9 +77,14 @@ to perform:
 
 
 TODO:
-  Move ptrace_* and ptracer_* into a seperate file.
-    Just make them extern functions so the header isn't bloated.
-	the ptracer_* stuff needs to set which state
-	(stopped ; ptrace_stopped; running) the process is in so that
-	stopping and continuing go through the correct paths:
-	SIGCONT (from SIGSTOP) vs PTRACE_CONT (ptrace_stopped).
+  Pretty sure the match code is broken.  It seems that we might need to
+  expand to using bits for signed matches as well.  This will grow the
+  match_object size by 4 or 8 bytes depending on architecture.
+
+  Should probably also keep a debug count of how much memory was freed
+  during a match processing.  And also check the last chunk in the list
+  and move it down to the smallest match_list that it can fit into.
+  just realloc() to the maximum required space and fixup size.
+
+  Should the match list maintain ordering?  This will slow down significantly
+  for large number of matches.
