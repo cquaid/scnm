@@ -30,30 +30,6 @@
 typedef int(*search_match_fn)(const struct match_object *,
     const struct match_needle *, const struct match_needle *);
 
-
-struct process_ctx;
-
-typedef int(*process_init_fn)(struct process_ctx *, int fd, pid_t pid);
-typedef void(*process_fini_fn)(struct process_ctx *);
-typedef int(*process_next_fn)(struct process_ctx *);
-typedef int(*process_set_fn)(struct process_ctx *, const struct region *);
-
-struct process_ctx {
-    int fd;
-    pid_t pid;
-    void *data;
-    size_t len;
-    struct process_ops *ops;
-};
-
-struct process_ops {
-    process_init_fn init;
-    process_fini_fn fini;
-    process_next_fn next;
-    process_set_fn set;
-};
-
-
 static ssize_t
 __read_pid_mem(int fd, pid_t pid, void *buf,
     size_t size, unsigned long addr)
@@ -85,7 +61,7 @@ __ptrace_peektext(int fd, pid_t pid, void *buf,
     rem = size % sizeof(unsigned long);
 
     for (i = 0; i < count; ++i) {
-        err = ptrace_peektext(pid, addr, &val); 
+        err = ptrace_peektext(pid, addr, &val);
 
         if (err != 0)
             return -1;
@@ -152,7 +128,7 @@ get_match_object(struct match_object *obj, read_fn read_actor,
 
     /* < 4 bytes means we can't fit int32 or above. */
     if (err < 4)
-        return 0;  
+        return 0;
 
     if (obj->v.u64 <= UINT32_MAX) {
         if (neg)
@@ -198,42 +174,6 @@ process_region(struct process_ctx *ctx,
 
 
 static int
-__process_pid_mem_init(struct process_ctx *ctx, int fd, pid_t pid)
-{
-    ctx->fd = fd;
-    ctx->pid = pid;
-
-    ctx->data = NULL;
-    ctx->len = 0;
-
-    return 0;
-}
-
-static void
-__process_pid_mem_fini(struct process_ctx *ctx)
-{
-}
-
-static int
-__process_pid_mem_next(struct process_ctx *ctx)
-{
-    return 0;
-}
-
-static int
-__process_pid_mem_set(struct process_ctx *ctx, const struct region *region)
-{
-    return 0;
-}
-
-static const process_ops __process_ops_pid_mem = {
-    .init = __process_pid_mem_init,
-    .fini = __process_pid_mem_fini,
-    .next = __process_pid_mem_next,
-    .set = __process_pid_mem_set
-};
-
-static int
 __search(pid_t pid, struct match_list *list,
     const struct match_needle *needle_1,
     const struct match_needle *needle_2,
@@ -259,12 +199,12 @@ __search(pid_t pid, struct match_list *list,
         /* Even if we have access, if we can't open the file,
          * try to use ptrace instead. */
         if (fd < 0)
-            ctx.ops = __process_ops_ptrace;
+            ctx.ops = process_get_ops_ptrace;
         else
-            ctx.ops = __process_ops_pid_mem;
+            ctx.ops = process_get_ops_pid_mem;
     }
     else {
-        ctx.ops = __process_ops_ptrace;
+        ctx.ops = process_get_ops_ptrace;
         fd = -1;
     }
 
