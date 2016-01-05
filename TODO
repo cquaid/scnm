@@ -88,3 +88,34 @@ TODO:
 
   Should the match list maintain ordering?  This will slow down significantly
   for large number of matches.
+
+
+
+Malloc Injection:
+
+  Stop process.
+  Add dlopen call to load an allocation hooking library (free, malloc, realloc).
+  Fixup GOT to call into allocation hooking library for each function instead
+    of the originals.
+  Unpatch dlopen stuff and rewind ip.
+
+  Hook will connect over a new unix domain socket to wintermute daemon.
+  Each allocation it will send return address and requested size.
+  Wintermute will maintain a list of these chunks.
+
+  Rational:
+    On multiple loads of a savefile the same allocations should occure.
+	Scanning these allocated chunks for changes after load (example:
+	health change to a character), will allow finding of allocations for
+	structs or classes used by the game or application.  From these
+	addresses we can determine the addresses on the stack that reference
+	this and create "frozen" references to these values.  Then with the
+	combination of this stack address and member offset, we can just
+	patch the dereference and offset instead of looking up a value
+	again.
+
+  This will require implementing calls that allow dumping a memory region,
+  returning the allocation list, filtering the allocation list by size,
+  searching the stack for a reference, dereferencing a pointer on the stack
+  and setting a value at an offset from that value.
+

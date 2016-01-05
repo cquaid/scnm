@@ -23,118 +23,17 @@
  * Memory searching callback routines using ptrace
  *
  * TODO: create and supply a wintermute context holding a ptracer context.
+ * TODO: bytes at the end of a region... and set_match_flags needs len param.
  */
 
-static ssize_t
-__ptrace_peektext(int fd, pid_t pid, void *buf,
-    size_t size, unsigned long addr)
-{
-    int err;
-    size_t i;
-    size_t rem;
-    size_t count;
-    unsigned long val;
-    (void)fd;
-
-    count = size / sizeof(unsigned long);
-    rem = size % sizeof(unsigned long);
-
-    for (i = 0; i < count; ++i) {
-        err = ptrace_peektext(pid, addr, &val);
-
-        if (err != 0)
-            return -1;
-
-        *(unsigned long *)buf = val;
-        buf += sizeof(unsigned long);
-        addr += sizeof(unsigned long);
-    }
-
-    if (rem != 0) {
-        err = ptrace_peektext(pid, addr, &val);
-
-        if (err != 0)
-            return -1;
-
-        memcpy(buf, &val, rem);
-    }
-
-    return 0;
-}
-
-static inline int
-get_match_object(struct match_object *obj, read_fn read_actor,
-    int fd, pid_t pid, unsigned long addr)
-{
-    int neg;
-    ssize_t err;
-
-    memset(obj, 0, sizeof(*obj));
-
-    err = read_actor(fd, pid, obj->v.bytes, sizeof(obj->v.bytes), addr);
-
-    if (err < 0)
-        return -1;
-
-    /* On 0, assume we got enough data (ptrace case) */
-    if (err == 0)
-        err = sizeof(obj->v.bytes);
-
-    /* Set address */
-    obj->addr = addr;
-
-    neg = (obj->v.i64 < 0LL);
-
-    /* Set integer and floating flags. */
-
-    if (obj->v.u64 <= UINT8_MAX) {
-        if (neg)
-            obj->flags.i8 = !(obj->v.i64 < INT8_MIN);
-        else
-            obj->flags.i8 = 1;
-    }
-
-    /* < 2 bytes means we can't fit int16 or above. */
-    if (err < 2)
-        return 0;
-
-    if (obj->v.u64 <= UINT16_MAX) {
-        if (neg)
-            obj->flags.i16 = !(obj->v.i64 < INT16_MIN);
-        else
-            obj->flags.i16 = 1;
-    }
-
-    /* < 4 bytes means we can't fit int32 or above. */
-    if (err < 4)
-        return 0;
-
-    if (obj->v.u64 <= UINT32_MAX) {
-        if (neg)
-            obj->flags.i32 = !(obj->v.i64 < INT32_MIN);
-        else
-            obj->flags.i32 = 1;
-    }
-
-    /* No clue how to determine if a valid float32. */
-    obj->flags.f32 = 1;
-
-    /* < 8 bytes means we can't fit int64 and double. */
-    if (err < 8)
-        return 0;
-
-    obj->flags.i64 = 1;
-    /* No clue how to determine if a valid float64. */
-    obj->flags.f64 = 1;
-
-    return 0;
-}
-
+#define WINDOW_SIZE    (WINDOW_ENTRIES * sizeof(unsigned long))
+#define WINDOW_ENTRIES (NLONG_PER_U64 * 2)
+#define NLONG_PER_U64  ((sizeof(uint64_t) / sizeof(unsigned long))
 
 struct __process_ptrace_data {
     union {
-        unsigned long l[2];
-        char *data[sizeof(unsigned long) * 2];
+        unsigned long l[WINDOW_ENTRIES];
+        char *data[WINDOW_SIZE];
     } window;
 
     size_t window_pos;
@@ -146,12 +45,14 @@ struct __process_ptrace_data {
 
 
 static int
-__process_ptrace_init(struct process_ctx *ctx, int fd, pid_t pid)
+__process_ptrace_init(struct process_ctx *ctx, int fd,
+    pid_t pid, int aligned)
 {
     /* Don't memset. We don't want to overwrite the ops. */
 
     ctx->fd = fd;
     ctx->pid = pid;
+    ctx->aligned = aligned;
 
     ctx->data = calloc(1, sizeof(*data));
 
@@ -203,10 +104,26 @@ get_next_segment(struct process_ctx *ctx)
     return 0;
 }
 
-static int
-__process_ptrace_next(struct process_ctx *ctx, int aligned,
-    struct match_object *obj)
+static inline int
+get_next_u64(struct process_ctx *ctx)
 {
+    int err;
+    size_t i;
+
+    for (i = 0; i < NLONG_PER_U64; ++i) {
+        err = get_next_segment(ctx);
+
+        if (err != 0)
+            return err;
+    }
+
+    return 0;
+}
+
+static int
+__process_ptrace_next(struct process_ctx *ctx, struct match_object *obj)
+{
+    int err;
     struct __process_ptrace_data *data;
 
     if (ctx->data == NULL) {
@@ -216,10 +133,57 @@ __process_ptrace_next(struct process_ctx *ctx, int aligned,
 
     data = ctx->data;
 
-    if (aligned) {
+    /* When aligned, window_pos is used as an index into window.l[]. */
 
+    if (ctx->aligned) {
+        if (data->window_pos >= ARRAY_SIZ(data->window.l)) {
+            err = get_next_u64(ctx);
+
+            if (err != 0)
+                return err;
+
+            data->window_pos = ARRAY_SIZ(data->window.l) - i;
+        }
+
+        memcpy(&(obj->v.bytes),
+            &( data->window.l[ data->window_pos ] ),
+            sizeof(obj->v.bytes));
+
+        /* addr - (entry_size * (len - pos))*/
+        obj->addr = data->addr -
+            (sizeof(unsigned long) * (data->window_len - data->window_pos));
+
+        /* Must check each segment aligned to unsigned long (ish)*/
+        data->window_pos++;
+
+        set_match_flags(obj);
+
+        return 0;
     }
 
+    /* When unaligned, window_pos is a byte offset into window.data[]. */
+
+    if ((data->window_len - data->window_pos) < sizeof(uint64_t)) {
+        err = get_next_u64(ctx);
+
+        if (err != 0)
+            return err;
+
+        data->window_pos -= sizeof(uint64_t);
+    }
+
+    memcpy(&(obj->v.bytes),
+        &( data->window.data[ data->window_pos ] ),
+        sizeof(obj->v.bytes));
+
+    /* addr - (window_bytes - pos) */
+    obj->addr = data->addr -
+        ((sizeof(unsigned long) * data->window_len) - data->window_pos);
+
+    /* Must check byte-by-byte. */
+    data->window_pos++;
+
+    set_match_flags(obj);
 
     return 0;
 }
@@ -245,8 +209,11 @@ __process_ptrace_set(struct process_ctx *ctx, const struct region *region)
     data->window_size = 0;
 
 
-    /* Not enough in the region to pull from. */
-    if (data->remaining < sizeof(unsigned long))
+    /* Not enough in the region to pull from.
+     * This is not really correct but is is okay.
+     * Any mapped space will always be > 16 bytes
+     * so there's nothing to worry about. */
+    if (data->remaining < sizeof(data->window.data))
         return 1;
 
     /* Initialize the window. */

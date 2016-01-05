@@ -83,6 +83,46 @@ __ptrace_peektext(int fd, pid_t pid, void *buf,
     return 0;
 }
 
+void
+set_match_flags(struct match_object *obj)
+{
+    int neg;
+
+    memset(&(obj->flags), 0, sizeof(obj->flags));
+
+    neg = (obj->v.i64 < 0LL);
+
+    /* Set integer and floating flags. */
+
+    if (obj->v.u64 <= UINT8_MAX) {
+        if (neg)
+            obj->flags.i8 = !(obj->v.i64 < INT8_MIN);
+        else
+            obj->flags.i8 = 1;
+    }
+
+    if (obj->v.u64 <= UINT16_MAX) {
+        if (neg)
+            obj->flags.i16 = !(obj->v.i64 < INT16_MIN);
+        else
+            obj->flags.i16 = 1;
+    }
+
+    if (obj->v.u64 <= UINT32_MAX) {
+        if (neg)
+            obj->flags.i32 = !(obj->v.i64 < INT32_MIN);
+        else
+            obj->flags.i32 = 1;
+    }
+
+    /* No clue how to determine if a valid float32. */
+    obj->flags.f32 = 1;
+
+    obj->flags.i64 = 1;
+    /* No clue how to determine if a valid float64. */
+    obj->flags.f64 = 1;
+}
+
 static inline int
 get_match_object(struct match_object *obj, read_fn read_actor,
     int fd, pid_t pid, unsigned long addr)
