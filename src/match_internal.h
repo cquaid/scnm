@@ -54,7 +54,7 @@ struct process_ctx {
 extern const process_ops * process_get_ops_pid_mem(void);
 extern const process_ops * process_get_ops_ptrace(void);
 
-extern void set_match_flags(struct match_object *obj);
+extern void set_match_flags(struct match_object *obj, size_t len);
 
 #endif /* H_MATCH_INTERNAL */
 
