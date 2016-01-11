@@ -312,7 +312,6 @@ __process_ptrace_set(struct process_ctx *ctx, const struct region *region)
         return -1;
     }
 
-
     data = ctx->data;
 
     data->addr = region->start;
@@ -320,14 +319,6 @@ __process_ptrace_set(struct process_ctx *ctx, const struct region *region)
 
     data->window_pos = 0;
     data->window_size = 0;
-
-
-    /* Not enough in the region to pull from.
-     * This is not really correct but is is okay.
-     * Any mapped space will always be > 16 bytes
-     * so there's nothing to worry about. */
-    if (data->remaining < sizeof(data->window.data))
-        return 1;
 
     /* Initialize the window. */
 

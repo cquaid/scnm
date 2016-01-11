@@ -84,7 +84,7 @@ struct match_chunk_header {
 
 struct match_list {
     struct list_head head;
-    size_t size;    
+    size_t size;
 };
 
 struct match_needle {

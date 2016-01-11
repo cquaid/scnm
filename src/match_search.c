@@ -179,25 +179,91 @@ get_match_object(struct match_object *obj, read_fn read_actor,
     return 0;
 }
 
-#define new_chunk(siz) \
-    malloc(sizeof(struct match_chunk_header) \
-        + (siz - 1) * sizeof(struct match_chunk_object))
+static inline struct match_chunk_header *
+new_chunk(unsigned long size)
+{
+    struct match_chunk_header *ret;
+
+    ret = calloc(1, sizeof(*ret) + ((size - 1) * sizeof(ret->objects[0])));
+
+    if (ret == NULL)
+        return NULL;
+
+    ret->count = size;
+
+    return ret;
+}
 
 
-static int
+static inline int
 process_region(struct process_ctx *ctx,
     struct match_list *list, const struct region *region,
-    int options, search_match_fn match,
+    search_match_fn match, const struct match_needle *needle_1,
+    const struct match_needle *needle_2,
     struct match_chunk_header **pcurrent_chunk)
 {
+    int err;
     struct match_chunk_header *current_chunk = *pcurrent_chunk;
+
+    if (current_chunk != NULL && (current_chunk->used >= current_chunk->count))
+        current_chunk = NULL;
 
     if (current_chunk == NULL) {
         current_chunk = new_chunk(MATCH_CHUNK_SIZE_HUGE);
 
         if (current_chunk == NULL)
             return -1;
+
+        match_list_add(list, current_chunk);
     }
+
+    err = ctx->op.set(ctx, region);
+
+    if (err < 0)
+        return -1;
+
+    for (;;) {
+        struct match_object *obj;
+
+        if (current_chunk->used >= current_chunk->count) {
+            current_chunk = new_chunk(MATCH_CHUNK_SIZE_HUGE);
+
+            if (current_chunk == NULL)
+                return -1;
+
+            match_list_add(list, current_chunk);
+        }
+
+        obj = &( current_chunk->objects[ current_chunk->used ] );
+
+        /* ->next() return values:
+         *   0 - success, more to process (obj gathered)
+         *   1 - success, no more to process (no obj gathered)
+         *  -1 - an error occured
+         */
+        err = ctx->op.next(ctx, obj);
+
+        if (err < 0)
+            return -1;
+
+        if (err > 0)
+            goto out;
+
+        /* Verify match */
+
+        /* match() return values:
+         *  0 - did not match criteria
+         *  1 - matched criteria
+         */
+        if (match(obj, needle_1, needle_2))
+            current_chunk->used++;
+    }
+
+out:
+
+    *pcurrent_chunk = current_chunk;
+
+    return 0;
 }
 
 
@@ -237,7 +303,8 @@ __search(pid_t pid, struct match_list *list,
     }
 
     /* Initialize the processing context. */
-    err = ctx.ops->init(&ctx, fd, pid);
+    err = ctx.ops->init(&ctx, fd, pid,
+            (options & SEARCH_OPT_ALIGNED));
 
     if (err != 0) {
         ret = -1;
@@ -250,10 +317,10 @@ __search(pid_t pid, struct match_list *list,
         region = region_entry(entry);
 
         err = process_region(&ctx, list,
-                region, options, match,
-                &current_chunk);
+                region, match, needle_1,
+                needle_2, &current_chunk);
 
-        if (err != 0) {
+        if (err < 0) {
             ret = -1;
             goto out;
         }
