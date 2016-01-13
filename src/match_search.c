@@ -30,68 +30,13 @@
 typedef int(*search_match_fn)(const struct match_object *,
     const struct match_needle *, const struct match_needle *);
 
-static ssize_t
-__read_pid_mem(int fd, pid_t pid, void *buf,
-    size_t size, unsigned long addr)
-{
-    ssize_t err;
-    (void)pid;
-
-    err = read_pid_mem_loop_fd(fd, buf, size, (off_t)addr);
-
-    if (err < 0)
-        return -1;
-
-    /* Will return smaller size than asked for if end of a range. */
-    return err;
-}
-
-static ssize_t
-__ptrace_peektext(int fd, pid_t pid, void *buf,
-    size_t size, unsigned long addr)
-{
-    int err;
-    size_t i;
-    size_t rem;
-    size_t count;
-    unsigned long val;
-    (void)fd;
-
-    count = size / sizeof(unsigned long);
-    rem = size % sizeof(unsigned long);
-
-    for (i = 0; i < count; ++i) {
-        err = ptrace_peektext(pid, addr, &val);
-
-        if (err != 0)
-            return -1;
-
-        *(unsigned long *)buf = val;
-        buf += sizeof(unsigned long);
-        addr += sizeof(unsigned long);
-    }
-
-    if (rem != 0) {
-        err = ptrace_peektext(pid, addr, &val);
-
-        if (err != 0)
-            return -1;
-
-        memcpy(buf, &val, rem);
-    }
-
-    return 0;
-}
-
 void
-set_match_flags(struct match_object *obj, size_t len)
+set_match_flags(struct match_object *obj, size_t size)
 {
-    int neg;
-
     memset(&(obj->flags), 0, sizeof(obj->flags));
 
-    if (len == 0)
-        len = sizeof(uint64_t);
+    if (size == 0)
+        size = sizeof(uint64_t);
 
     /* Set integer and floating flags. */
 
@@ -109,74 +54,6 @@ set_match_flags(struct match_object *obj, size_t len)
         obj->flags.i16 = 1;
 
     obj->flags.i8 = 1;
-}
-
-static inline int
-get_match_object(struct match_object *obj, read_fn read_actor,
-    int fd, pid_t pid, unsigned long addr)
-{
-    int neg;
-    ssize_t err;
-
-    memset(obj, 0, sizeof(*obj));
-
-    err = read_actor(fd, pid, obj->v.bytes, sizeof(obj->v.bytes), addr);
-
-    if (err < 0)
-        return -1;
-
-    /* On 0, assume we got enough data (ptrace case) */
-    if (err == 0)
-        err = sizeof(obj->v.bytes);
-
-    /* Set address */
-    obj->addr = addr;
-
-    neg = (obj->v.i64 < 0LL);
-
-    /* Set integer and floating flags. */
-
-    if (obj->v.u64 <= UINT8_MAX) {
-        if (neg)
-            obj->flags.i8 = !(obj->v.i64 < INT8_MIN);
-        else
-            obj->flags.i8 = 1;
-    }
-
-    /* < 2 bytes means we can't fit int16 or above. */
-    if (err < 2)
-        return 0;
-
-    if (obj->v.u64 <= UINT16_MAX) {
-        if (neg)
-            obj->flags.i16 = !(obj->v.i64 < INT16_MIN);
-        else
-            obj->flags.i16 = 1;
-    }
-
-    /* < 4 bytes means we can't fit int32 or above. */
-    if (err < 4)
-        return 0;
-
-    if (obj->v.u64 <= UINT32_MAX) {
-        if (neg)
-            obj->flags.i32 = !(obj->v.i64 < INT32_MIN);
-        else
-            obj->flags.i32 = 1;
-    }
-
-    /* No clue how to determine if a valid float32. */
-    obj->flags.f32 = 1;
-
-    /* < 8 bytes means we can't fit int64 and double. */
-    if (err < 8)
-        return 0;
-
-    obj->flags.i64 = 1;
-    /* No clue how to determine if a valid float64. */
-    obj->flags.f64 = 1;
-
-    return 0;
 }
 
 static inline struct match_chunk_header *
@@ -217,7 +94,7 @@ process_region(struct process_ctx *ctx,
         match_list_add(list, current_chunk);
     }
 
-    err = ctx->op.set(ctx, region);
+    err = ctx->ops->set(ctx, region);
 
     if (err < 0)
         return -1;
@@ -241,7 +118,7 @@ process_region(struct process_ctx *ctx,
          *   1 - success, no more to process (no obj gathered)
          *  -1 - an error occured
          */
-        err = ctx->op.next(ctx, obj);
+        err = ctx->ops->next(ctx, obj);
 
         if (err < 0)
             return -1;
@@ -280,6 +157,7 @@ __search(pid_t pid, struct match_list *list,
     int oerrno;
 
     struct process_ctx ctx;
+    struct list_head *entry;
 
     struct match_chunk_header *current_chunk = NULL;
 
@@ -293,12 +171,12 @@ __search(pid_t pid, struct match_list *list,
         /* Even if we have access, if we can't open the file,
          * try to use ptrace instead. */
         if (fd < 0)
-            ctx.ops = process_get_ops_ptrace;
+            ctx.ops = process_get_ops_ptrace();
         else
-            ctx.ops = process_get_ops_pid_mem;
+            ctx.ops = process_get_ops_pid_mem();
     }
     else {
-        ctx.ops = process_get_ops_ptrace;
+        ctx.ops = process_get_ops_ptrace();
         fd = -1;
     }
 
@@ -332,7 +210,7 @@ out:
         oerrno = errno;
 
     /* Finalize the processing context */
-    ctx.ops.fini(&ctx);
+    ctx.ops->fini(&ctx);
 
     /* close the pid_mem fd if open */
     if (fd != -1)
@@ -352,7 +230,7 @@ __search_eq(const struct match_object *value,
     (void)unused;
 
     if (needle->obj.flags.i8) {
-        if ((needle->obj.v.u8 == value->v.u8)
+        if (needle->obj.v.u8 == value->v.u8)
             return 1;
     }
 
@@ -365,7 +243,7 @@ __search_eq(const struct match_object *value,
         if (needle->obj.v.u32 == value->v.u32)
             return 1;
     }
- 
+
     if (needle->obj.flags.i64 || needle->obj.flags.f64) {
         if (needle->obj.v.u64 == value->v.u64)
             return 1;
@@ -385,9 +263,9 @@ __search_eq(const struct match_object *value,
  * @return < 0 on failure with error returned in errno
  */
 int
-match_eq(pid_t pid, struct match_list *list,
+search_eq(pid_t pid, struct match_list *list,
     const struct match_needle *needle,
-    const struct region_list *region,
+    const struct region_list *regions,
     int options)
 {
     return __search(pid, list, needle, NULL, regions, options, __search_eq);

@@ -13,7 +13,6 @@
 
 #include "match.h"
 #include "match_internal.h"
-#include "ptrace.h"
 #include "region.h"
 
 
@@ -27,7 +26,7 @@
 
 #define WINDOW_SIZE    (WINDOW_ENTRIES * sizeof(unsigned long))
 #define WINDOW_ENTRIES (NLONG_PER_U64 * 2)
-#define NLONG_PER_U64  ((sizeof(uint64_t) / sizeof(unsigned long))
+#define NLONG_PER_U64  (sizeof(uint64_t) / sizeof(unsigned long))
 
 struct __process_ptrace_data {
     union {
@@ -53,7 +52,7 @@ __process_ptrace_init(struct process_ctx *ctx, int fd,
     ctx->pid = pid;
     ctx->aligned = aligned;
 
-    ctx->data = calloc(1, sizeof(*data));
+    ctx->data = calloc(1, sizeof(struct __process_ptrace_data));
 
     if (ctx->data == NULL)
         return -1;
@@ -73,6 +72,7 @@ __process_ptrace_fini(struct process_ctx *ctx)
 static inline int
 get_next_segment(struct process_ctx *ctx)
 {
+    int err;
     struct __process_ptrace_data *data;
 
     data = ctx->data;
@@ -81,24 +81,24 @@ get_next_segment(struct process_ctx *ctx)
     if (data->remaining < sizeof(unsigned long))
         return 1;
 
-    if (data->window_len >= ARRAY_SIZ(data->window.l)) {
+    if (data->window_size >= ARRAY_SIZ(data->window.l)) {
         size_t i;
-        /* window_len == array size ; slide the window */
-        for (i = 1; i < data->window_len; ++i)
+        /* window_size == array size ; slide the window */
+        for (i = 1; i < data->window_size; ++i)
             data->window.l[i - 1] = data->window.l[i];
 
-        data->window_len = ARRAY_SIZ(data->window.l) - 1;
+        data->window_size = ARRAY_SIZ(data->window.l) - 1;
     }
 
-    err = ptrace_peektext(ctx->pid, ctx->addr,
-                &(data->window.l[ data->window_len ]);
+    err = ptrace_peektext(ctx->pid, data->addr,
+                &(data->window.l[ data->window_size ]));
 
     if (err != 0)
         return -1;
 
     data->addr += sizeof(unsigned long);
     data->remaining -= sizeof(unsigned long);
-    data->window_len++;
+    data->window_size++;
 
     return 0;
 }
@@ -117,7 +117,9 @@ get_next_u64(struct process_ctx *ctx)
     int i;
     int err;
 
-    for (i = 0; i < NLONG_PER_U64; ++i) {
+    const int nlongs = (int)NLONG_PER_U64;
+
+    for (i = 0; i < nlongs; ++i) {
         err = get_next_segment(ctx);
 
         if (err < 0)
@@ -132,7 +134,7 @@ get_next_u64(struct process_ctx *ctx)
             return i;
     }
 
-    return NLONG_PER_U64;
+    return nlongs;
 }
 
 
@@ -183,7 +185,7 @@ __process_ptrace_next_aligned(struct process_ctx *ctx,
 
     /* addr - (entry_size * (len - pos)) */
     obj->addr = data->addr -
-        (sizeof(unsigned long) * (data->window_len - data->window_pos));
+        (sizeof(unsigned long) * (data->window_size - data->window_pos));
 
     /* Must check each segment aligned to unsigned long (ish)*/
     data->window_pos++;
@@ -203,7 +205,7 @@ __process_ptrace_next_unaligned(struct process_ctx *ctx,
 
     /* When unaligned, window_pos is a byte offset into window.data[]. */
 
-    remaining = data->window_len - data->window_pos;
+    remaining = data->window_size - data->window_pos;
 
     if (remaining < sizeof(uint64_t)) {
         err = get_next_u64(ctx);
@@ -243,7 +245,7 @@ __process_ptrace_next_unaligned(struct process_ctx *ctx,
          * So now we need to shift back by (sizeof(u64) - 1)
          * if space permits.
          */
-        remaining = data->window_len - data->window_pos;
+        remaining = data->window_size - data->window_pos;
 
         if (remaining >= (sizeof(uint64_t) - 1))
             data->window_pos -= sizeof(uint64_t) - 1;
@@ -253,7 +255,7 @@ __process_ptrace_next_unaligned(struct process_ctx *ctx,
 
 unaligned:
 
-    remaining = data->window_len - data->window_pos;
+    remaining = data->window_size - data->window_pos;
 
     if (remaining >= sizeof(obj->v.bytes)) {
         memcpy(obj->v.bytes,
@@ -272,7 +274,7 @@ unaligned:
 
     /* addr - (window_bytes - pos) */
     obj->addr = data->addr -
-        ((sizeof(unsigned long) * data->window_len) - data->window_pos);
+        ((sizeof(unsigned long) * data->window_size) - data->window_pos);
 
     /* Must check byte-by-byte. */
     data->window_pos++;
@@ -286,9 +288,6 @@ unaligned:
 static int
 __process_ptrace_next(struct process_ctx *ctx, struct match_object *obj)
 {
-    int err;
-    size_t remaining;
-
     if (ctx->data == NULL) {
         errno = EINVAL;
         return -1;
@@ -342,7 +341,7 @@ __process_ptrace_set(struct process_ctx *ctx, const struct region *region)
     return 0;
 }
 
-static const process_ops __process_ops_ptrace = {
+static const struct process_ops __process_ops_ptrace = {
     .init = __process_ptrace_init,
     .fini = __process_ptrace_fini,
     .next = __process_ptrace_next,
@@ -350,7 +349,7 @@ static const process_ops __process_ops_ptrace = {
 };
 
 
-const process_ops *
+const struct process_ops *
 process_get_ops_ptrace(void)
 {
     return &__process_ops_ptrace;

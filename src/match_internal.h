@@ -33,7 +33,7 @@ struct process_ctx;
 
 typedef int(*process_init_fn)(struct process_ctx *, int fd, pid_t pid, int);
 typedef void(*process_fini_fn)(struct process_ctx *);
-typedef int(*process_next_fn)(struct process_ctx *);
+typedef int(*process_next_fn)(struct process_ctx *, struct match_object *);
 typedef int(*process_set_fn)(struct process_ctx *, const struct region *);
 
 struct process_ops {
@@ -51,8 +51,8 @@ struct process_ctx {
     const struct process_ops *ops;
 };
 
-extern const process_ops * process_get_ops_pid_mem(void);
-extern const process_ops * process_get_ops_ptrace(void);
+extern const struct process_ops * process_get_ops_pid_mem(void);
+extern const struct process_ops * process_get_ops_ptrace(void);
 
 extern void set_match_flags(struct match_object *obj, size_t len);
 

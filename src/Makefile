@@ -29,6 +29,9 @@ SRC := \
 	command.c \
 	match_init.c \
 	match_match.c \
+	match_search.c \
+	match_search_ptrace.c \
+	match_search_pid_mem.c \
 	pid_maps.c \
 	pid_mem.c \
 	region.c

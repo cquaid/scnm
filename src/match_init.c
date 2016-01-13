@@ -153,7 +153,7 @@ match_needle_init(struct match_needle *needle, const char *value)
 
     if (errno == ERANGE)
         return -1;
-   
+
     if (endptr == '\0') {
         /* Ignore regurn.  We already know it parses correctly. */
         (void)match_flags_set_floating(value, &(needle->obj.flags));
